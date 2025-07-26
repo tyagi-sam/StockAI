@@ -28,6 +28,10 @@ export const auth = {
     }),
   register: (email: string, password: string, name: string) => 
     api.post('/auth/register', { email, password, name }),
+  verifyEmail: (email: string, otp: string) => 
+    api.post('/auth/verify-email', { email, otp }),
+  resendOtp: (email: string) => 
+    api.post('/auth/resend-otp', { email }),
   getGoogleLoginUrl: () => api.get('/auth/login/google'),
   handleGoogleCallback: (code: string, state: string) => 
     api.post('/auth/callback/google', { code, state }),

@@ -1,180 +1,198 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { auth } from '../services/api';
-import { AuthResponse } from '../types';
 import toast from 'react-hot-toast';
+import EmailVerification from './EmailVerification';
 
 export default function LoginForm() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [showPassword, setShowPassword] = useState(false);
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [registeredName, setRegisteredName] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const response = isLogin
-        ? await auth.login(email, password)
-        : await auth.register(email, password, name);
-
-      const data: AuthResponse = response.data;
       if (isLogin) {
-        localStorage.setItem('token', data.access_token);
-        toast.success('Logged in successfully!');
-        router.push('/dashboard');
+        const response = await auth.login(email, password);
+        const { access_token, user } = response.data;
+        
+        localStorage.setItem('token', access_token);
+        toast.success('Login successful!');
+        
+        // Redirect to dashboard
+        window.location.href = '/dashboard';
       } else {
-        toast.success('Account created! Please sign in.');
-        setIsLogin(true);
-        setEmail('');
-        setPassword('');
-        setName('');
+        const response = await auth.register(email, password, name);
+        toast.success(response.data.message || 'Registration successful!');
+        
+        // Show email verification
+        setRegisteredEmail(email);
+        setRegisteredName(name);
+        setShowEmailVerification(true);
       }
     } catch (error: any) {
-      console.error(error);
-      const msg = error.response?.data?.detail || 'Authentication failed';
-      toast.error(msg);
+      const message = error.response?.data?.detail || 'An error occurred';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
     try {
-      const res = await auth.getGoogleLoginUrl();
-      if (res.data.login_url) window.location.href = res.data.login_url;
-      else toast.error('Unable to connect Google');
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Google login failed');
+      setLoading(true);
+      const response = await auth.getGoogleLoginUrl();
+      window.location.href = response.data.login_url;
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to initiate Google login';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-primary-50 px-4">
-      <div className="card w-full max-w-sm animate-fade-in">
-        <div className="card-header text-center">
-          <h2 className="text-2xl font-semibold text-gray-900">
-            Stock<span className="text-primary-600">AI</span> Search
-          </h2>
-          <p className="text-sm text-gray-600 mt-1">
-            {isLogin ? 'Sign in to continue' : 'Create your account'}
-          </p>
-        </div>
-        <div className="card-body space-y-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
-              <div className="flex flex-col">
-                <label htmlFor="name" className="text-sm font-medium text-gray-700">
-                  Full Name
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="input mt-1"
-                  placeholder="Your full name"
-                />
-              </div>
-            )}
+  const handleVerificationSuccess = () => {
+    setShowEmailVerification(false);
+    setIsLogin(true);
+    setEmail(registeredEmail);
+    toast.success('Email verified! You can now log in.');
+  };
 
-            <div className="flex flex-col">
-              <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                Email
-              </label>
+  const handleVerificationCancel = () => {
+    setShowEmailVerification(false);
+    setIsLogin(true);
+  };
+
+  // Show email verification component
+  if (showEmailVerification) {
+    return (
+      <EmailVerification
+        email={registeredEmail}
+        name={registeredName}
+        onVerificationSuccess={handleVerificationSuccess}
+        onCancel={handleVerificationCancel}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {!isLogin && (
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+              Full Name
+            </label>
+            <div className="relative">
               <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input mt-1"
-                placeholder="you@example.com"
+                id="name"
+                type="text"
+                required={!isLogin}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input"
+                placeholder="Enter your full name"
               />
             </div>
-
-            <div className="flex flex-col">
-              <label htmlFor="password" className="text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input"
-                  placeholder={isLogin ? 'Enter password' : 'New password'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-3 flex items-center text-sm text-gray-500"
-                >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-primary w-full"
-            >
-              {loading ? (isLogin ? 'Signing in...' : 'Creating...') : isLogin ? 'Sign In' : 'Sign Up'}
-            </button>
-          </form>
-
-          <div className="flex items-center">
-            <div className="flex-grow border-t border-gray-200"></div>
-            <span className="px-3 text-sm text-gray-400">or</span>
-            <div className="flex-grow border-t border-gray-200"></div>
           </div>
+        )}
 
-          <button
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="btn btn-secondary w-full flex items-center justify-center"
-          >
-            <img src="/google-icon.svg" alt="Google" className="w-5 h-5 mr-2" />
-            {loading ? 'Connecting...' : 'Continue with Google'}
-          </button>
-
-          <p className="text-center text-sm text-gray-600">
-            {isLogin ? (
-              <>New here?{' '}
-                <button onClick={() => setIsLogin(false)} className="text-primary-600 hover:underline">
-                  Create account
-                </button>
-              </>
-            ) : (
-              <>Already have one?{' '}
-                <button onClick={() => setIsLogin(true)} className="text-primary-600 hover:underline">
-                  Sign in
-                </button>
-              </>
-            )}
-          </p>
-          {isLogin && (
-            <p className="text-center text-sm">
-              <a href="#" className="text-gray-600 hover:text-gray-800">
-                Forgot password?
-              </a>
-            </p>
-          )}
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            Email Address
+          </label>
+          <div className="relative">
+            <input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="input"
+              placeholder="Enter your email"
+            />
+          </div>
         </div>
+
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            Password
+          </label>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input pr-10"
+              placeholder={isLogin ? "Enter your password" : "Create a password"}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-2 top-3 text-gray-400 hover:text-gray-600 transition-colors text-sm"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="btn btn-primary w-full"
+        >
+          {loading ? (
+            <div className="flex items-center justify-center">
+              <div className="spinner mr-2"></div>
+              {isLogin ? "Signing in..." : "Creating account..."}
+            </div>
+          ) : (
+            isLogin ? "Sign In" : "Create Account"
+          )}
+        </button>
+      </form>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-300" />
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">Or continue with</span>
+        </div>
+      </div>
+
+      <button
+        onClick={handleGoogleLogin}
+        disabled={loading}
+        className="w-full flex items-center justify-center px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+      >
+        Continue with Google
+      </button>
+
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={() => {
+            setIsLogin(!isLogin);
+            setEmail('');
+            setPassword('');
+            setName('');
+          }}
+          className="text-sm text-blue-600 hover:text-blue-500 font-medium"
+        >
+          {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+        </button>
       </div>
     </div>
   );

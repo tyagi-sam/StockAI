@@ -17,6 +17,8 @@ class User(Base, TimestampMixin):
     zerodha_token_expiry = Column(DateTime)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
+    is_email_verified = Column(Boolean, default=False)  # Email verification status
+    email_verified_at = Column(DateTime, nullable=True)  # When email was verified
     preferences = Column(JSON, nullable=True)  # JSON for user preferences
 
     # Relationships

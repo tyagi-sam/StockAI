@@ -14,6 +14,8 @@ from ...core.auth import create_access_token, get_current_user
 from ...core.security import get_password_hash, verify_password
 from ...models.user import User
 from ...core.logger import logger
+from ...services.email import email_service
+from ...services.otp import otp_service
 
 router = APIRouter()
 
@@ -49,6 +51,11 @@ async def login(
             logger.warning(f"Login attempt for inactive user: {form_data.username}")
             raise HTTPException(status_code=400, detail="Inactive user")
         
+        # Check if email is verified (only for manual registration, not OAuth)
+        if user.password and not user.is_email_verified:
+            logger.warning(f"Login attempt for unverified email: {form_data.username}")
+            raise HTTPException(status_code=400, detail="Please verify your email before logging in")
+        
         # Create access token
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
@@ -63,7 +70,8 @@ async def login(
             "user": {
                 "id": user.id,
                 "email": user.email,
-                "name": user.name
+                "name": user.name,
+                "is_email_verified": user.is_email_verified
             }
         }
         
@@ -97,34 +105,162 @@ async def register(
             logger.warning(f"Registration attempt with existing email: {email}")
             raise HTTPException(status_code=400, detail="User with this email already exists")
         
-        # Create new user
+        # Create new user (not verified yet)
         hashed_password = get_password_hash(password)
         new_user = User(
             email=email,
             password=hashed_password,
             name=name,
-            is_active=True
+            is_active=True,
+            is_email_verified=False  # Email not verified initially
         )
         
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
         
-        logger.info(f"User registered successfully: {email}")
+        # Generate and send OTP
+        otp = otp_service.generate_otp()
+        if otp_service.store_otp(email, otp):
+            # Send verification email
+            if email_service.send_verification_otp(email, otp, name):
+                logger.info(f"Verification OTP sent to: {email}")
+                return {
+                    "message": "Registration successful. Please check your email for verification code.",
+                    "user": {
+                        "id": new_user.id,
+                        "email": new_user.email,
+                        "name": new_user.name,
+                        "is_email_verified": False
+                    }
+                }
+            else:
+                # Email failed, but user was created
+                logger.error(f"Failed to send verification email to: {email}")
+                return {
+                    "message": "Registration successful, but verification email failed to send. Please contact support.",
+                    "user": {
+                        "id": new_user.id,
+                        "email": new_user.email,
+                        "name": new_user.name,
+                        "is_email_verified": False
+                    }
+                }
+        else:
+            # OTP storage failed
+            logger.error(f"Failed to store OTP for: {email}")
+            raise HTTPException(status_code=500, detail="Failed to generate verification code")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Registration error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/verify-email")
+async def verify_email(
+    verification_data: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """Verify email with OTP"""
+    try:
+        email = verification_data.get("email")
+        otp = verification_data.get("otp")
+        
+        if not email or not otp:
+            raise HTTPException(status_code=400, detail="Email and OTP are required")
+        
+        logger.info(f"Email verification attempt for: {email}")
+        
+        # Verify OTP
+        is_valid, message = otp_service.verify_otp(email, otp)
+        
+        if not is_valid:
+            logger.warning(f"Invalid OTP for email: {email}")
+            raise HTTPException(status_code=400, detail=message)
+        
+        # Find user and mark as verified
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            logger.error(f"User not found for email verification: {email}")
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if user.is_email_verified:
+            logger.info(f"Email already verified for: {email}")
+            return {"message": "Email already verified"}
+        
+        # Mark email as verified
+        user.is_email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        await db.commit()
+        
+        # Send welcome email
+        email_service.send_welcome_email(email, user.name)
+        
+        logger.info(f"Email verified successfully for: {email}")
         
         return {
-            "message": "User registered successfully",
+            "message": "Email verified successfully! Welcome to StockAI!",
             "user": {
-                "id": new_user.id,
-                "email": new_user.email,
-                "name": new_user.name
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "is_email_verified": True
             }
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration error: {str(e)}", exc_info=True)
+        logger.error(f"Email verification error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/resend-otp")
+async def resend_otp(
+    resend_data: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """Resend verification OTP"""
+    try:
+        email = resend_data.get("email")
+        
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+        
+        logger.info(f"OTP resend request for: {email}")
+        
+        # Check if user exists
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            logger.warning(f"OTP resend for non-existent user: {email}")
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if user.is_email_verified:
+            logger.info(f"OTP resend for already verified email: {email}")
+            return {"message": "Email already verified"}
+        
+        # Generate and send new OTP
+        success, new_otp = otp_service.resend_otp(email)
+        
+        if success:
+            if email_service.send_verification_otp(email, new_otp, user.name):
+                logger.info(f"New OTP sent to: {email}")
+                return {"message": "New verification code sent to your email"}
+            else:
+                logger.error(f"Failed to send new OTP email to: {email}")
+                raise HTTPException(status_code=500, detail="Failed to send verification email")
+        else:
+            logger.error(f"Failed to generate new OTP for: {email}")
+            raise HTTPException(status_code=500, detail="Failed to generate verification code")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OTP resend error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/login/google")
@@ -214,11 +350,13 @@ async def google_callback(
         user = result.scalar_one_or_none()
         
         if not user:
-            # Create new user
+            # Create new user (OAuth users are automatically verified)
             user = User(
                 email=user_info.get("email"),
                 name=user_info.get("name"),
-                is_active=True
+                is_active=True,
+                is_email_verified=True,  # OAuth emails are pre-verified
+                email_verified_at=datetime.utcnow()
             )
             db.add(user)
             await db.commit()
@@ -227,6 +365,8 @@ async def google_callback(
         else:
             # Update existing user info
             user.name = user_info.get("name")
+            user.is_email_verified = True  # Ensure OAuth users are verified
+            user.email_verified_at = datetime.utcnow()
             await db.commit()
             logger.info(f"Updated user from Google: {user.email}")
         
@@ -242,7 +382,8 @@ async def google_callback(
             "user": {
                 "id": user.id,
                 "email": user.email,
-                "name": user.name
+                "name": user.name,
+                "is_email_verified": user.is_email_verified
             }
         }
         
@@ -287,7 +428,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
             "id": current_user.id,
             "email": current_user.email,
             "name": current_user.name,
-            "is_active": current_user.is_active
+            "is_active": current_user.is_active,
+            "is_email_verified": current_user.is_email_verified
         } 
         
     except Exception as e:

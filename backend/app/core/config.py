@@ -34,6 +34,22 @@ class Settings(BaseSettings):
     # Encryption
     FERNET_KEY: str  # Base64-encoded 32-byte key for encrypting sensitive data
     
+    # Email Configuration
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_TLS: bool = True
+    SMTP_SSL: bool = False
+    
+    # Email Templates
+    FROM_EMAIL: str = "noreply@stockai.com"
+    FROM_NAME: str = "StockAI"
+    
+    # OTP Configuration
+    OTP_EXPIRE_MINUTES: int = 10
+    OTP_LENGTH: int = 6
+    
     # Environment
     ENVIRONMENT: str = "development"
     
