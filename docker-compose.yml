@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: stock_ai_postgres
+    environment:
+      POSTGRES_DB: stock_ai
+      POSTGRES_USER: stock_ai_user
+      POSTGRES_PASSWORD: stock_ai_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - stock_ai_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stock_ai_user -d stock_ai"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: stock_ai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - stock_ai_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stock_ai_backend
+    environment:
+      - DATABASE_URL=postgresql://stock_ai_user:stock_ai_password@postgres:5432/stock_ai
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - ZERODHA_API_KEY=${ZERODHA_API_KEY}
+      - ZERODHA_API_SECRET=${ZERODHA_API_SECRET}
+      - ZERODHA_REDIRECT_URL=${ZERODHA_REDIRECT_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FERNET_KEY=${FERNET_KEY}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - WS_URL=ws://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+      - BACKEND_CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - ENVIRONMENT=development
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stock_ai_network
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: stock_ai_frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - stock_ai_network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  stock_ai_network:
+    driver: bridge
