@@ -17,9 +17,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
+COPY alembic.ini .
+COPY alembic/ ./alembic/
+
+# Copy and make startup script executable
+COPY startup.sh .
+RUN chmod +x startup.sh
 
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+# Run the startup script
+CMD ["./startup.sh"] 

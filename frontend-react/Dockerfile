@@ -22,5 +22,5 @@ RUN npm install -g serve
 # Expose port
 EXPOSE 3000
 
-# Start the application
-CMD ["serve", "-s", "dist", "-l", "3000"] 
+# Start the application with proper fallback for React Router
+CMD ["serve", "-s", "dist", "-l", "3000", "--single"] 
