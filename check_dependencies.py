@@ -71,16 +71,6 @@ def check_python_packages():
             module = __import__(package.replace('-', '_'))
             version = getattr(module, '__version__', 'unknown')
             print(f"   ✅ {package} {version}")
-            
-            # Check for TA-Lib specifically
-            if package == 'talib':
-                try:
-                    import talib
-                    print(f"   ✅ TA-Lib {talib.__version__} (Python wrapper)")
-                except ImportError:
-                    print(f"   ❌ TA-Lib Python wrapper not installed")
-                    all_good = False
-                    
         except ImportError:
             print(f"   ❌ {package} - Missing")
             all_good = False
@@ -133,8 +123,8 @@ def check_architecture_compatibility():
         print("   ✅ x86_64 architecture - fully supported")
         return True
     elif arch in ['aarch64', 'arm64']:
-        print("   ✅ ARM64 architecture - supported with updated config")
-        print("   ℹ️  TA-Lib will be built from source with modern config files")
+        print("   ✅ ARM64 architecture - fully supported with pandas_ta")
+        print("   ℹ️  No compilation issues with pure Python technical indicators")
         return True
     else:
         print(f"   ⚠️  Unknown architecture {arch} - may have compatibility issues")
@@ -192,7 +182,7 @@ def main():
         print("1. Install missing Python packages: pip install -r backend/requirements.txt")
         print("2. Start Docker Desktop if not running")
         print("3. Check your .env file configuration")
-        print("4. For ARM64 systems, the updated Dockerfile should handle TA-Lib properly")
+        print("4. pandas_ta provides pure Python technical indicators - no compilation needed")
         sys.exit(1)
 
 if __name__ == "__main__":

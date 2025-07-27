@@ -27,7 +27,7 @@ def check_dependencies():
     required_packages = [
         'fastapi', 'uvicorn', 'sqlalchemy', 'alembic', 'psycopg2-binary',
         'redis', 'python-jose', 'passlib', 'bcrypt', 'python-multipart',
-        'httpx', 'yfinance', 'talib', 'numpy', 'pandas'
+        'httpx', 'yfinance', 'numpy', 'pandas'
     ]
     
     missing_packages = []

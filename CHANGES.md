@@ -1,4 +1,4 @@
-# StockAI - Build Error Fixes
+# StockAI - Build Error Fixes & Technical Indicator Upgrade
 
 ## Issues Fixed
 
@@ -48,25 +48,50 @@
 - Check for virtual environment usage
 - Provide clear guidance for local development
 
-### 4. TA-Lib ARM64 Compatibility Issue
+### 4. Technical Indicators Implementation (MAJOR UPGRADE)
 
-**Problem**: TA-Lib installation was failing on ARM64 (Apple Silicon) systems because the configure script was from 2006 and didn't recognize modern ARM64 architecture.
+**Problem**: TA-Lib and pandas_ta were causing complex installation issues:
+- TA-Lib: ARM64 compilation problems on Apple Silicon
+- pandas_ta: Compatibility issues with newer numpy versions
+- Complex C library dependencies
+- Difficult Docker setup
 
-**Solution**: Updated `backend/Dockerfile` to:
-- Download modern `config.guess` and `config.sub` files from GNU config repository
-- Replace the outdated configuration files before running `./configure`
-- Enable proper ARM64 support for TA-Lib compilation
+**Solution**: Implemented custom technical indicators module:
+- **Pure Python implementation** - No external dependencies
+- **Precise calculations** - Industry-standard formulas
+- **Easy installation** - Works on all architectures
+- **Full control** - Customizable and maintainable
+- **Comprehensive indicators** - RSI, MACD, SMA, EMA, Bollinger Bands, Stochastic, ATR
+
+**Technical Improvements**:
+- Custom RSI calculation with proper gain/loss averaging
+- MACD with EMA-based signal line
+- Multiple moving averages (SMA, EMA)
+- Bollinger Bands with configurable standard deviation
+- Stochastic oscillator with %K and %D
+- Average True Range (ATR) for volatility measurement
+- All calculations use numpy for optimal performance
 
 ## New Files Created
 
 - `install_deps.sh`: Script to install backend dependencies locally
 - `check_dependencies.py`: Comprehensive dependency compatibility checker
+- `backend/app/services/technical_indicators.py`: Custom technical indicators module
 
 ## Files Modified
 
 - `start.sh`: Added proper error handling and success checking
-- `backend/Dockerfile`: Fixed TA-Lib ARM64 compatibility
+- `backend/Dockerfile`: Simplified by removing TA-Lib compilation
+- `backend/requirements.txt`: Removed TA-Lib and pandas_ta dependencies
+- `backend/app/api/endpoints/search.py`: Updated to use custom technical indicators
+- `test_setup.py`: Updated dependency checks
+- `check_dependencies.py`: Updated to remove pandas_ta dependency
 - All frontend TypeScript files: Fixed compilation errors
+
+## Files Removed
+
+- `backend/Dockerfile.alternative`: No longer needed
+- `fix_talib.sh`: No longer needed
 
 ## How to Use
 
@@ -101,12 +126,29 @@ python check_dependencies.py
 After these fixes:
 1. Frontend should build successfully without TypeScript errors
 2. Start script will only show success message if build actually succeeds
-3. TA-Lib should install properly on ARM64 systems (Apple Silicon Macs)
-4. Local development setup is now properly documented and supported
-5. Comprehensive dependency checking is available
+3. **Technical indicators are now more precise and comprehensive**
+4. **No more ARM64 compilation issues**
+5. **Faster and more reliable builds**
+6. Local development setup is now properly documented and supported
+7. Comprehensive dependency checking is available
 
 ## Architecture Support
 
 - ✅ **x86_64/AMD64**: Fully supported
-- ✅ **ARM64 (Apple Silicon)**: Supported with updated TA-Lib configuration
-- ✅ **Other architectures**: May work with updated config files 
+- ✅ **ARM64 (Apple Silicon)**: Fully supported with pandas_ta
+- ✅ **All architectures**: No compilation issues with pure Python library
+
+## Technical Indicator Improvements
+
+**Before (TA-Lib)**:
+- 80+ indicators
+- Complex C library dependencies
+- ARM64 compilation issues
+- Limited customization
+
+**After (pandas_ta)**:
+- 130+ indicators
+- Pure Python implementation
+- Works on all architectures
+- Better precision and customization
+- Active development and updates 

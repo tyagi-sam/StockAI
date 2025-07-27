@@ -1,23 +1,20 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List, Dict
-from datetime import datetime, timezone, timedelta
-import talib
+import logging
 import numpy as np
-from openai import OpenAI
-import os
-import json
-from pydantic import BaseModel
+import pandas as pd
 import yfinance as yf
-import requests
-
-from ...db.session import get_db
-from ...core.config import settings
-# Removed Zerodha service import - using yfinance instead
-from ...core.auth import get_current_user
-from ...models.user import User
-from ...core.logger import logger
-from ...services.search_limit import search_limit_service
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Optional, Tuple
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
+from openai import OpenAI
+from app.db.session import get_db
+from app.core.auth import get_current_user
+from app.models.user import User
+from app.services.search_limit import SearchLimitService
+from app.services.technical_indicators import get_technical_indicators
+from app.core.config import settings
+from app.core.logger import logger
 
 router = APIRouter()
 
@@ -287,11 +284,14 @@ def get_technical_analysis(symbol: str, user: User) -> TechnicalData:
         low_prices = np.array([float(d['low']) for d in stock_data])
         volumes = np.array([int(d['volume']) for d in stock_data])
         
-        # Calculate technical indicators
-        rsi = talib.RSI(close_prices)[-1]
-        macd, macd_signal, _ = talib.MACD(close_prices)
-        sma_20 = talib.SMA(close_prices, timeperiod=20)[-1]
-        sma_50 = talib.SMA(close_prices, timeperiod=50)[-1]
+        # Calculate technical indicators using our custom module
+        indicators = get_technical_indicators(close_prices, high_prices, low_prices)
+        
+        rsi = indicators['rsi']
+        macd = indicators['macd']
+        macd_signal = indicators['macd_signal']
+        sma_20 = indicators['sma_20']
+        sma_50 = indicators['sma_50']
         
         # Calculate support and resistance
         support_levels, resistance_levels, pivot_points = calculate_support_resistance(high_prices, low_prices, close_prices)
@@ -321,8 +321,8 @@ def get_technical_analysis(symbol: str, user: User) -> TechnicalData:
             is_indian_stock=currency_info["is_indian"],
             last_updated=stock_data[-1]["last_updated"],
             rsi=rsi,
-            macd=macd[-1],
-            macd_signal=macd_signal[-1],
+            macd=macd,
+            macd_signal=macd_signal,
             sma_20=sma_20,
             sma_20_formatted=format_currency(sma_20, currency_info["currency"]),
             sma_50=sma_50,
@@ -553,19 +553,14 @@ async def analyze_stock(
         logger.info(f"Stock analysis requested for {request.symbol} by user {current_user.email}")
         
         # Check search limit before proceeding
-        can_search, message, remaining = await search_limit_service.check_and_increment_search_count(current_user, db)
+        can_search, message, remaining = await SearchLimitService.check_and_increment_search_count(current_user, db)
         
         if not can_search:
             logger.warning(f"User {current_user.email} exceeded daily search limit")
             return AnalysisResponse(
                 success=False,
                 error=message,
-                search_limit_info={
-                    "daily_limit": search_limit_service.DAILY_LIMIT,
-                    "used_today": search_limit_service.DAILY_LIMIT,
-                    "remaining_today": 0,
-                    "can_search": False
-                }
+                search_limit_info=await SearchLimitService.get_user_search_status(current_user, db)
             )
         
         # Get technical analysis
@@ -593,7 +588,7 @@ async def analyze_stock(
             response_data["rule_analysis"] = rule_analysis
         
         # Get updated search status
-        search_status = await search_limit_service.get_user_search_status(current_user, db)
+        search_status = await SearchLimitService.get_user_search_status(current_user, db)
         
         logger.info(f"Analysis completed successfully for {request.symbol}. User has {remaining} searches remaining.")
         
@@ -623,11 +618,11 @@ async def get_search_status(
 ):
     """Get user's current search status and limits"""
     try:
-        search_status = await search_limit_service.get_user_search_status(current_user, db)
+        search_status = await SearchLimitService.get_user_search_status(current_user, db)
         return search_status
     except Exception as e:
         logger.error(f"Error getting search status for user {current_user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get search status")
+        raise HTTPException(status_code=500, detail="Error getting search status")
 
 @router.get("/health")
 async def health_check():
