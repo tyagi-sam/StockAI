@@ -18,7 +18,6 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
-  const [registeredName, setRegisteredName] = useState('');
   const [message, setMessage] = useState<Message | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,7 +42,6 @@ export default function LoginForm() {
         await auth.register(email, password, name);
         
         setRegisteredEmail(email);
-        setRegisteredName(name);
         setShowEmailVerification(true);
       }
     } catch (error: any) {
@@ -66,13 +64,6 @@ export default function LoginForm() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleVerificationSuccess = () => {
-    setShowEmailVerification(false);
-    setIsLogin(true);
-    setEmail(registeredEmail);
-    setMessage({ type: 'success', text: 'Email verified! You can now log in.' });
   };
 
   const handleVerificationCancel = () => {
