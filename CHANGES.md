@@ -18,6 +18,8 @@
   - Updated interface to only include required props
 - `frontend-react/src/components/auth/LoginForm.tsx`: 
   - Removed unused `response` variable
+  - Removed unused `registeredName` variable
+  - Removed unused `handleVerificationSuccess` function
   - Updated EmailVerification component call to only pass required props
 - `frontend-react/src/components/common/Alert.tsx`: Removed unused React import
 - `frontend-react/src/components/dashboard/StockAnalysis.tsx`: 
@@ -46,13 +48,24 @@
 - Check for virtual environment usage
 - Provide clear guidance for local development
 
+### 4. TA-Lib ARM64 Compatibility Issue
+
+**Problem**: TA-Lib installation was failing on ARM64 (Apple Silicon) systems because the configure script was from 2006 and didn't recognize modern ARM64 architecture.
+
+**Solution**: Updated `backend/Dockerfile` to:
+- Download modern `config.guess` and `config.sub` files from GNU config repository
+- Replace the outdated configuration files before running `./configure`
+- Enable proper ARM64 support for TA-Lib compilation
+
 ## New Files Created
 
 - `install_deps.sh`: Script to install backend dependencies locally
+- `check_dependencies.py`: Comprehensive dependency compatibility checker
 
 ## Files Modified
 
 - `start.sh`: Added proper error handling and success checking
+- `backend/Dockerfile`: Fixed TA-Lib ARM64 compatibility
 - All frontend TypeScript files: Fixed compilation errors
 
 ## How to Use
@@ -77,9 +90,23 @@ cd backend && python -m uvicorn app.main:app --reload
 cd frontend-react && npm run dev
 ```
 
+### For dependency checking:
+```bash
+# Check all dependencies and compatibility
+python check_dependencies.py
+```
+
 ## Testing
 
 After these fixes:
 1. Frontend should build successfully without TypeScript errors
 2. Start script will only show success message if build actually succeeds
-3. Local development setup is now properly documented and supported 
+3. TA-Lib should install properly on ARM64 systems (Apple Silicon Macs)
+4. Local development setup is now properly documented and supported
+5. Comprehensive dependency checking is available
+
+## Architecture Support
+
+- ✅ **x86_64/AMD64**: Fully supported
+- ✅ **ARM64 (Apple Silicon)**: Supported with updated TA-Lib configuration
+- ✅ **Other architectures**: May work with updated config files 
