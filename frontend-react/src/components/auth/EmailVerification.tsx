@@ -9,12 +9,10 @@ import type { Message } from '../../types';
 
 interface EmailVerificationProps {
   email: string;
-  name?: string;
-  onVerificationSuccess: () => void;
   onCancel: () => void;
 }
 
-export default function EmailVerification({ email, name, onVerificationSuccess, onCancel }: EmailVerificationProps) {
+export default function EmailVerification({ email, onCancel }: EmailVerificationProps) {
   const navigate = useNavigate();
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);

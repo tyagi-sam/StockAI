@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth } from '../services/api';
 import StockAnalysis from '../components/dashboard/StockAnalysis';
 import Button from '../components/common/Button';
 import Alert from '../components/common/Alert';

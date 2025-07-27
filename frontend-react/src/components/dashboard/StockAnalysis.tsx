@@ -165,7 +165,7 @@ export default function StockAnalysis() {
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                 placeholder="Enter stock symbol (e.g., AAPL, GOOGL, RELIANCE.NS, TCS)"
-                disabled={loading || (searchLimitInfo && !searchLimitInfo.can_search)}
+                disabled={loading || (searchLimitInfo?.can_search === false)}
               />
             </div>
             
@@ -190,7 +190,7 @@ export default function StockAnalysis() {
               id="analyze-button"
               type="submit"
               loading={loading}
-              disabled={loading || !symbol.trim() || (searchLimitInfo && !searchLimitInfo.can_search)}
+              disabled={loading || !symbol.trim() || (searchLimitInfo?.can_search === false)}
               className="w-full"
             >
               Analyze Stock

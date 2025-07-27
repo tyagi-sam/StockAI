@@ -40,7 +40,7 @@ export default function LoginForm() {
           navigate('/dashboard');
         }, 1500);
       } else {
-        const response = await auth.register(email, password, name);
+        await auth.register(email, password, name);
         
         setRegisteredEmail(email);
         setRegisteredName(name);
@@ -84,8 +84,6 @@ export default function LoginForm() {
     return (
       <EmailVerification
         email={registeredEmail}
-        name={registeredName}
-        onVerificationSuccess={handleVerificationSuccess}
         onCancel={handleVerificationCancel}
       />
     );
