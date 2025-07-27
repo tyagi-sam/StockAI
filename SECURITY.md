@@ -15,6 +15,7 @@ This document outlines the security measures implemented in the StockAI applicat
 - JWT-based authentication with secure token generation
 - Token expiration (24 hours by default)
 - Secure password hashing using bcrypt
+- **Secure OTP hashing using SHA256 with salt** ✅
 - OAuth2 integration with Google for enhanced security
 - WebSocket authentication with token validation
 
@@ -29,6 +30,7 @@ This document outlines the security measures implemented in the StockAI applicat
 - Fernet encryption for sensitive data
 - Secure database connections
 - Redis password protection
+- **Hashed OTP storage in Redis** ✅
 - HTTPS enforcement in production
 
 ## Security Checklist
@@ -37,6 +39,7 @@ This document outlines the security measures implemented in the StockAI applicat
 - [x] Environment variables for all secrets
 - [x] JWT token authentication
 - [x] Password hashing
+- [x] **OTP hashing with salt** ✅
 - [x] CORS protection
 - [x] Input validation
 - [x] SQL injection prevention
@@ -52,6 +55,43 @@ This document outlines the security measures implemented in the StockAI applicat
 - [ ] Audit logging
 - [ ] Penetration testing
 - [ ] Dependency vulnerability scanning
+
+## OTP Security Implementation
+
+### How OTPs are Secured
+1. **Generation**: Random 6-digit OTP using `secrets` module
+2. **Hashing**: SHA256 hash with unique salt per OTP
+3. **Storage**: Only hashed OTP and salt stored in Redis
+4. **Verification**: Hash provided OTP with stored salt and compare
+5. **Expiration**: Automatic deletion after 10 minutes
+6. **Rate Limiting**: Maximum 5 attempts per OTP
+
+### Security Benefits
+- ✅ **One-way hashing**: Cannot reverse to original OTP
+- ✅ **Salt protection**: Prevents rainbow table attacks
+- ✅ **Unique salt per OTP**: Each OTP has different salt
+- ✅ **Temporary storage**: Redis with automatic expiration
+- ✅ **Attempt limiting**: Prevents brute force attacks
+
+### Code Example
+```python
+# OTP Generation and Storage
+otp = "123456"  # Generated OTP
+salt = secrets.token_hex(16)  # Unique salt
+otp_hash = hashlib.sha256((otp + salt).encode()).hexdigest()
+
+# Storage in Redis
+otp_data = {
+    "otp_hash": otp_hash,  # Never store plain OTP
+    "salt": salt,
+    "created_at": datetime.utcnow().isoformat(),
+    "attempts": 0
+}
+
+# Verification
+provided_otp_hash = hashlib.sha256((provided_otp + salt).encode()).hexdigest()
+is_valid = provided_otp_hash == stored_otp_hash
+```
 
 ## Environment Variables Security
 
@@ -77,6 +117,10 @@ GOOGLE_CLIENT_SECRET=<google oauth client secret>
 ZERODHA_API_KEY=<zerodha api key>
 ZERODHA_API_SECRET=<zerodha api secret>
 OPENAI_API_KEY=<openai api key>
+
+# OTP Configuration
+OTP_EXPIRE_MINUTES=10
+OTP_LENGTH=6
 ```
 
 ### Security Best Practices
@@ -94,6 +138,15 @@ OPENAI_API_KEY=<openai api key>
 3. Client includes token in `Authorization: Bearer <token>` header
 4. Server validates token on each request
 5. Token expires after configured time (24 hours default)
+
+### OTP Verification Flow
+1. User registers with email/password
+2. Server generates random OTP and hashes it with salt
+3. Hashed OTP and salt stored in Redis with expiration
+4. User receives plain OTP via email
+5. User submits OTP for verification
+6. Server hashes provided OTP with stored salt and compares
+7. OTP deleted from Redis after successful verification
 
 ### CORS Configuration
 ```python
@@ -118,6 +171,7 @@ BACKEND_CORS_ORIGINS="https://yourdomain.com"
 - Bind to localhost only
 - Disable dangerous commands
 - Use SSL in production
+- **Hashed OTP storage** ✅
 
 ## Frontend Security
 
@@ -141,13 +195,7 @@ BACKEND_CORS_ORIGINS="https://yourdomain.com"
 - [ ] Use strong secrets
 - [ ] Monitor logs for suspicious activity
 - [ ] Regular security updates
-- [ ] Backup encryption
-
-### Docker Security
-- Use non-root users in containers
-- Scan images for vulnerabilities
-- Keep base images updated
-- Use secrets management for sensitive data
+- [ ] **Verify OTP hashing is enabled** ✅
 
 ## Monitoring & Logging
 

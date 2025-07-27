@@ -8,11 +8,7 @@ class UserBase(BaseModel):
     is_active: bool = True
 
 class UserCreate(UserBase):
-    zerodha_user_id: str
-    zerodha_access_token: str
-    zerodha_refresh_token: Optional[str] = None
-    zerodha_api_key: str
-    zerodha_api_secret: str
+    password: Optional[str] = None  # Optional for OAuth users
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
@@ -21,8 +17,11 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
-    zerodha_user_id: str
-    preferences: Dict
+    is_email_verified: bool
+    email_verified_at: Optional[datetime] = None
+    daily_search_count: int
+    last_search_reset: datetime
+    preferences: Optional[Dict] = None
     created_at: datetime
     updated_at: datetime
 

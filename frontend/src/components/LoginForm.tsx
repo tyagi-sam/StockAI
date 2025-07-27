@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { auth } from '../services/api';
-import toast from 'react-hot-toast';
 import EmailVerification from './EmailVerification';
 
 export default function LoginForm() {
@@ -15,10 +14,12 @@ export default function LoginForm() {
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [registeredName, setRegisteredName] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setMessage(null);
 
     try {
       if (isLogin) {
@@ -26,13 +27,16 @@ export default function LoginForm() {
         const { access_token, user } = response.data;
         
         localStorage.setItem('token', access_token);
-        toast.success('Login successful!');
+        localStorage.setItem('user', JSON.stringify(user));
         
-        // Redirect to dashboard
-        window.location.href = '/dashboard';
+        setMessage({ type: 'success', text: 'Login successful! Redirecting to dashboard...' });
+        
+        // Redirect to dashboard after a short delay
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 1500);
       } else {
         const response = await auth.register(email, password, name);
-        toast.success(response.data.message || 'Registration successful!');
         
         // Show email verification
         setRegisteredEmail(email);
@@ -40,8 +44,8 @@ export default function LoginForm() {
         setShowEmailVerification(true);
       }
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'An error occurred';
-      toast.error(message);
+      const errorMessage = error.response?.data?.detail || 'An error occurred';
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -50,11 +54,12 @@ export default function LoginForm() {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
+      setMessage(null);
       const response = await auth.getGoogleLoginUrl();
       window.location.href = response.data.login_url;
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'Failed to initiate Google login';
-      toast.error(message);
+      const errorMessage = error.response?.data?.detail || 'Failed to initiate Google login';
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -64,7 +69,7 @@ export default function LoginForm() {
     setShowEmailVerification(false);
     setIsLogin(true);
     setEmail(registeredEmail);
-    toast.success('Email verified! You can now log in.');
+    setMessage({ type: 'success', text: 'Email verified! You can now log in.' });
   };
 
   const handleVerificationCancel = () => {
@@ -86,6 +91,16 @@ export default function LoginForm() {
 
   return (
     <div className="space-y-4">
+      {message && (
+        <div className={`p-3 rounded-md text-sm ${
+          message.type === 'success' 
+            ? 'bg-green-50 text-green-800 border border-green-200' 
+            : 'bg-red-50 text-red-800 border border-red-200'
+        }`}>
+          {message.text}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-3">
         {!isLogin && (
           <div>
@@ -188,6 +203,7 @@ export default function LoginForm() {
             setEmail('');
             setPassword('');
             setName('');
+            setMessage(null);
           }}
           className="text-sm text-blue-600 hover:text-blue-500 font-medium"
         >

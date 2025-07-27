@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
-    description="AI-powered stock analysis application with Zerodha integration",
+    description="AI-powered stock analysis application with daily search limits",
     lifespan=lifespan
 )
 

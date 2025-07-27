@@ -1,159 +1,150 @@
 #!/usr/bin/env python3
 """
-Simple test script to verify the basic setup of the Stock AI application.
-Run this script to check if all components are properly configured.
+Test Setup Script for StockAI Project
+This script checks if the environment is properly configured.
 """
 
 import os
 import sys
+import subprocess
 from pathlib import Path
 
-def test_imports():
-    """Test if all required modules can be imported"""
-    print("Testing imports...")
+def check_python_version():
+    """Check if Python version is compatible"""
+    print("🐍 Checking Python version...")
+    version = sys.version_info
+    if version.major == 3 and version.minor >= 9:
+        print(f"✅ Python {version.major}.{version.minor}.{version.micro} is compatible")
+        return True
+    else:
+        print(f"❌ Python {version.major}.{version.minor}.{version.micro} is not compatible. Need Python 3.9+")
+        return False
+
+def check_dependencies():
+    """Check if required dependencies are installed"""
+    print("\n📦 Checking dependencies...")
+    
+    required_packages = [
+        'fastapi', 'uvicorn', 'sqlalchemy', 'alembic', 'psycopg2-binary',
+        'redis', 'python-jose', 'passlib', 'bcrypt', 'python-multipart',
+        'httpx', 'yfinance', 'talib', 'numpy', 'pandas'
+    ]
+    
+    missing_packages = []
+    
+    for package in required_packages:
+        try:
+            __import__(package.replace('-', '_'))
+            print(f"✅ {package}")
+        except ImportError:
+            print(f"❌ {package} - Missing")
+            missing_packages.append(package)
+    
+    if missing_packages:
+        print(f"\n⚠️  Missing packages: {', '.join(missing_packages)}")
+        print("Run: pip install -r backend/requirements.txt")
+        return False
+    
+    return True
+
+def check_environment():
+    """Check if environment variables are set"""
+    print("\n🔧 Checking environment variables...")
+    
+    # Add backend to path for imports
+    backend_path = Path(__file__).parent / "backend"
+    sys.path.insert(0, str(backend_path))
     
     try:
-        # Test backend imports
-        sys.path.append(str(Path(__file__).parent / "backend"))
-        
         from app.core.config import settings
-        print("✓ Config module imported successfully")
+        print("✅ Environment configuration loaded successfully")
         
-        from app.core.logger import logger
-        print("✓ Logger module imported successfully")
+        # Check required settings
+        required_settings = [
+            'JWT_SECRET', 'DATABASE_URL', 'REDIS_URL', 
+            'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
+            'FERNET_KEY'
+        ]
         
-        from app.models import Base, User, Trade
-        print("✓ Models imported successfully")
+        missing_settings = []
+        for setting in required_settings:
+            if not getattr(settings, setting, None):
+                missing_settings.append(setting)
         
-        from app.db.session import get_db
-        print("✓ Database session imported successfully")
+        if missing_settings:
+            print(f"⚠️  Missing environment variables: {', '.join(missing_settings)}")
+            print("Please check your .env file")
+            return False
+        else:
+            print("✅ All required environment variables are set")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Error loading environment: {e}")
+        return False
+
+def check_database():
+    """Check if database is accessible"""
+    print("\n🗄️  Checking database connection...")
+    
+    try:
+        from app.db.session import async_engine
+        from app.models import Base, User
         
-        from app.services.zerodha import zerodha_service
-        print("✓ Zerodha service imported successfully")
+        # Test connection
+        import asyncio
+        async def test_connection():
+            async with async_engine.begin() as conn:
+                await conn.run_sync(lambda sync_conn: sync_conn.execute("SELECT 1"))
         
+        asyncio.run(test_connection())
+        print("✅ Database connection successful")
         return True
         
-    except ImportError as e:
-        print(f"✗ Import error: {e}")
-        return False
     except Exception as e:
-        print(f"✗ Unexpected error: {e}")
+        print(f"❌ Database connection failed: {e}")
         return False
 
-def test_environment():
-    """Test environment variables"""
-    print("\nTesting environment variables...")
+def check_redis():
+    """Check if Redis is accessible"""
+    print("\n🔴 Checking Redis connection...")
     
-    required_vars = [
-        "DATABASE_URL",
-        "REDIS_URL", 
-        "JWT_SECRET",
-        "ZERODHA_API_KEY",
-        "ZERODHA_API_SECRET",
-        "FERNET_KEY"
-    ]
-    
-    missing_vars = []
-    for var in required_vars:
-        if not os.getenv(var):
-            missing_vars.append(var)
-            print(f"✗ Missing: {var}")
-        else:
-            print(f"✓ Found: {var}")
-    
-    if missing_vars:
-        print(f"\n⚠️  Missing environment variables: {', '.join(missing_vars)}")
-        print("Please set these variables in your .env file")
+    try:
+        import redis
+        from app.core.config import settings
+        
+        r = redis.from_url(settings.REDIS_URL)
+        r.ping()
+        print("✅ Redis connection successful")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Redis connection failed: {e}")
         return False
-    
-    return True
-
-def test_docker_files():
-    """Test if Docker files exist"""
-    print("\nTesting Docker files...")
-    
-    docker_files = [
-        "docker-compose.yml",
-        "backend/Dockerfile", 
-        "frontend/Dockerfile"
-    ]
-    
-    missing_files = []
-    for file_path in docker_files:
-        if not Path(file_path).exists():
-            missing_files.append(file_path)
-            print(f"✗ Missing: {file_path}")
-        else:
-            print(f"✓ Found: {file_path}")
-    
-    if missing_files:
-        print(f"\n⚠️  Missing Docker files: {', '.join(missing_files)}")
-        return False
-    
-    return True
-
-def test_frontend_files():
-    """Test if frontend files exist"""
-    print("\nTesting frontend files...")
-    
-    frontend_files = [
-        "frontend/package.json",
-        "frontend/src/app/page.tsx",
-        "frontend/src/components/LoginForm.tsx",
-        "frontend/src/components/StockAnalysis.tsx"
-    ]
-    
-    missing_files = []
-    for file_path in frontend_files:
-        if not Path(file_path).exists():
-            missing_files.append(file_path)
-            print(f"✗ Missing: {file_path}")
-        else:
-            print(f"✓ Found: {file_path}")
-    
-    if missing_files:
-        print(f"\n⚠️  Missing frontend files: {', '.join(missing_files)}")
-        return False
-    
-    return True
 
 def main():
-    """Run all tests"""
-    print("🧪 Stock AI Setup Test")
+    """Main function"""
+    print("🚀 StockAI Test Setup")
     print("=" * 50)
     
-    tests = [
-        test_imports,
-        test_environment,
-        test_docker_files,
-        test_frontend_files
+    checks = [
+        check_python_version(),
+        check_dependencies(),
+        check_environment(),
+        check_database(),
+        check_redis()
     ]
     
-    results = []
-    for test in tests:
-        try:
-            result = test()
-            results.append(result)
-        except Exception as e:
-            print(f"✗ Test failed with error: {e}")
-            results.append(False)
-    
     print("\n" + "=" * 50)
-    print("📊 Test Results")
-    print("=" * 50)
-    
-    if all(results):
-        print("🎉 All tests passed! Your setup looks good.")
-        print("\nNext steps:")
-        print("1. Copy env.example to .env and fill in your credentials")
-        print("2. Run: docker-compose up -d")
-        print("3. Access the application at http://localhost:3000")
+    if all(checks):
+        print("🎉 All checks passed! Your environment is ready.")
+        print("\n📋 Next steps:")
+        print("1. Start the backend: cd backend && python -m uvicorn app.main:app --reload")
+        print("2. Start the frontend: cd frontend && npm run dev")
+        print("3. Open http://localhost:3000 in your browser")
     else:
-        print("❌ Some tests failed. Please fix the issues above.")
-        print("\nCommon fixes:")
-        print("- Install Python dependencies: pip install -r backend/requirements.txt")
-        print("- Set up environment variables in .env file")
-        print("- Ensure all files are in the correct locations")
+        print("❌ Some checks failed. Please fix the issues above.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main() 

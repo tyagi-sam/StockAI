@@ -52,9 +52,10 @@ async def login(
             raise HTTPException(status_code=400, detail="Inactive user")
         
         # Check if email is verified (only for manual registration, not OAuth)
-        if user.password and not user.is_email_verified:
-            logger.warning(f"Login attempt for unverified email: {form_data.username}")
-            raise HTTPException(status_code=400, detail="Please verify your email before logging in")
+        # Temporarily disabled for existing users - will be enabled once email service is configured
+        # if user.password and not user.is_email_verified:
+        #     logger.warning(f"Login attempt for unverified email: {form_data.username}")
+        #     raise HTTPException(status_code=400, detail="Please verify your email before logging in")
         
         # Create access token
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -199,10 +200,15 @@ async def verify_email(
         # Send welcome email
         email_service.send_welcome_email(email, user.name)
         
+        # Generate JWT token for automatic login
+        access_token = create_access_token(data={"sub": str(user.id)})
+        
         logger.info(f"Email verified successfully for: {email}")
         
         return {
             "message": "Email verified successfully! Welcome to StockAI!",
+            "access_token": access_token,
+            "token_type": "bearer",
             "user": {
                 "id": user.id,
                 "email": user.email,

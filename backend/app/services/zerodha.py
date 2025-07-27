@@ -1,12 +1,9 @@
 from kiteconnect import KiteConnect
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
-import json
-import requests
 
 from ..core.config import settings
 from ..core.logger import logger
-from ..models.trade import Trade, TradeSide, TradeStatus
 from ..core.security import decrypt_sensitive_data
 
 class ZerodhaService:
@@ -88,32 +85,6 @@ class ZerodhaService:
         except Exception as e:
             logger.error("Failed to fetch trades", exc_info=True)
             raise
-    
-    def parse_trade(self, order_data: Dict) -> Optional[Trade]:
-        """Parse order data into Trade model"""
-        try:
-            return Trade(
-                id=order_data.get("order_id"),
-                symbol=order_data.get("tradingsymbol"),
-                side=TradeSide.BUY if order_data.get("transaction_type") == "BUY" else TradeSide.SELL,
-                quantity=order_data.get("quantity", 0),
-                price=order_data.get("price", 0),
-                status=TradeStatus.COMPLETE if order_data.get("status") == "COMPLETE" else TradeStatus.PENDING,
-                timestamp=datetime.fromisoformat(order_data.get("order_timestamp", "").replace("Z", "+00:00")) if order_data.get("order_timestamp") else datetime.now()
-            )
-        except Exception as e:
-            logger.error(f"Failed to parse trade: {str(e)}", exc_info=True)
-            return None
-    
-    def calculate_pnl(self, trades: List[Trade]) -> float:
-        """Calculate total P&L from trades"""
-        total_pnl = 0.0
-        for trade in trades:
-            if trade.side == TradeSide.BUY:
-                total_pnl -= trade.quantity * trade.price
-            else:
-                total_pnl += trade.quantity * trade.price
-        return total_pnl
     
     def get_holdings(self) -> List[Dict]:
         """Get current holdings (requires authentication)"""

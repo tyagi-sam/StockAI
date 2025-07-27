@@ -1,6 +1,7 @@
 import secrets
 import redis
 import json
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
@@ -18,6 +19,14 @@ class OTPService:
         """Generate a random OTP"""
         return ''.join(secrets.choice('0123456789') for _ in range(self.otp_length))
     
+    def _hash_otp(self, otp: str, salt: str) -> str:
+        """Hash OTP with salt using SHA256"""
+        return hashlib.sha256((otp + salt).encode()).hexdigest()
+    
+    def _generate_salt(self) -> str:
+        """Generate a random salt for OTP hashing"""
+        return secrets.token_hex(16)
+    
     def _get_otp_key(self, email: str) -> str:
         """Get Redis key for OTP storage"""
         return f"otp:{email}"
@@ -27,10 +36,15 @@ class OTPService:
         return f"otp_attempts:{email}"
     
     def store_otp(self, email: str, otp: str) -> bool:
-        """Store OTP in Redis with expiration"""
+        """Store hashed OTP in Redis with expiration"""
         try:
+            # Generate salt and hash the OTP
+            salt = self._generate_salt()
+            otp_hash = self._hash_otp(otp, salt)
+            
             otp_data = {
-                "otp": otp,
+                "otp_hash": otp_hash,  # Store hashed OTP instead of plain text
+                "salt": salt,           # Store salt for verification
                 "created_at": datetime.utcnow().isoformat(),
                 "attempts": 0
             }
@@ -43,15 +57,15 @@ class OTPService:
                 json.dumps(otp_data)
             )
             
-            logger.info(f"OTP stored for email: {email}")
+            logger.info(f"Hashed OTP stored for email: {email}")
             return True
             
         except Exception as e:
             logger.error(f"Failed to store OTP for {email}: {str(e)}", exc_info=True)
             return False
     
-    def get_otp(self, email: str) -> Optional[Tuple[str, datetime, int]]:
-        """Get OTP from Redis"""
+    def get_otp(self, email: str) -> Optional[Tuple[str, str, datetime, int]]:
+        """Get hashed OTP and salt from Redis"""
         try:
             key = self._get_otp_key(email)
             otp_data_str = self.redis_client.get(key)
@@ -63,7 +77,8 @@ class OTPService:
             created_at = datetime.fromisoformat(otp_data["created_at"])
             attempts = otp_data.get("attempts", 0)
             
-            return otp_data["otp"], created_at, attempts
+            # Return hashed OTP, salt, creation time, and attempts
+            return otp_data["otp_hash"], otp_data["salt"], created_at, attempts
             
         except Exception as e:
             logger.error(f"Failed to get OTP for {email}: {str(e)}", exc_info=True)
@@ -72,12 +87,12 @@ class OTPService:
     def verify_otp(self, email: str, provided_otp: str) -> Tuple[bool, str]:
         """Verify OTP and return success status and message"""
         try:
-            # Get stored OTP
+            # Get stored hashed OTP
             otp_result = self.get_otp(email)
             if not otp_result:
                 return False, "OTP expired or not found"
             
-            stored_otp, created_at, attempts = otp_result
+            stored_otp_hash, salt, created_at, attempts = otp_result
             
             # Check if OTP has expired
             if datetime.utcnow() - created_at > timedelta(minutes=self.otp_expire_minutes):
@@ -89,8 +104,10 @@ class OTPService:
                 self.delete_otp(email)
                 return False, "Too many failed attempts. Please request a new OTP."
             
-            # Verify OTP
-            if stored_otp == provided_otp:
+            # Hash the provided OTP with stored salt and compare
+            provided_otp_hash = self._hash_otp(provided_otp, salt)
+            
+            if provided_otp_hash == stored_otp_hash:
                 # OTP is correct, delete it
                 self.delete_otp(email)
                 logger.info(f"OTP verified successfully for email: {email}")
@@ -162,7 +179,7 @@ class OTPService:
             if not otp_result:
                 return False
             
-            _, created_at, attempts = otp_result
+            _, _, created_at, attempts = otp_result
             
             # Check if expired
             if datetime.utcnow() - created_at > timedelta(minutes=self.otp_expire_minutes):

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import talib
 import numpy as np
 from openai import OpenAI
@@ -9,6 +9,7 @@ import os
 import json
 from pydantic import BaseModel
 import yfinance as yf
+import requests
 
 from ...db.session import get_db
 from ...core.config import settings
@@ -16,8 +17,45 @@ from ...core.config import settings
 from ...core.auth import get_current_user
 from ...models.user import User
 from ...core.logger import logger
+from ...services.search_limit import search_limit_service
 
 router = APIRouter()
+
+# Currency conversion rates (you can update these or use a live API)
+USD_TO_INR_RATE = 83.0  # Approximate rate, can be updated
+
+def convert_utc_to_ist(utc_date):
+    """Convert datetime to Indian Standard Time and format for display"""
+    try:
+        # Check if the date already has timezone info
+        if hasattr(utc_date, 'tzinfo') and utc_date.tzinfo is not None:
+            # Date already has timezone, convert to IST
+            ist_offset = timedelta(hours=5, minutes=30)
+            ist_date = utc_date.astimezone(timezone(ist_offset))
+        else:
+            # Assume UTC and convert to IST
+            ist_offset = timedelta(hours=5, minutes=30)
+            ist_date = utc_date.replace(tzinfo=timezone.utc).astimezone(timezone(ist_offset))
+        
+        # Format the date
+        formatted_date = ist_date.strftime("%Y-%m-%d %H:%M:%S IST")
+        
+        # If it's 00:00:00, it's likely end-of-day data
+        if ist_date.hour == 0 and ist_date.minute == 0 and ist_date.second == 0:
+            return f"{ist_date.strftime('%Y-%m-%d')} (End of Day) IST"
+        
+        return formatted_date
+        
+    except Exception as e:
+        logger.error(f"Error converting timezone: {e}")
+        return utc_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+def format_currency(amount: float, currency: str) -> str:
+    """Format amount with appropriate currency symbol"""
+    if currency == "INR":
+        return f"₹{amount:,.2f}"
+    else:
+        return f"${amount:,.2f}"
 
 def calculate_support_resistance(high_prices: np.ndarray, low_prices: np.ndarray, close_prices: np.ndarray, periods: int = 20) -> tuple:
     """Calculate support and resistance levels using pivot points and recent highs/lows"""
@@ -116,16 +154,15 @@ except Exception as e:
     client = None
 
 def get_stock_data_yfinance(symbol: str, days: int = 90) -> Optional[List[Dict]]:
-    """Get stock data using yfinance with support for Indian stocks"""
+    """Get stock data using yfinance with priority for Indian markets"""
     try:
-        logger.info(f"Using yfinance for {symbol}")
+        logger.info(f"Fetching stock data for {symbol}")
         
-        # Try different symbol formats for Indian stocks
+        # For Indian stocks, try Indian exchanges first
         symbol_variants = [
-            symbol,  # Original symbol
-            f"{symbol}.NS",  # NSE format
-            f"{symbol}.BO",  # BSE format
-            f"{symbol}.NSE",  # Alternative NSE format
+            f"{symbol}.NS",  # NSE - National Stock Exchange (India)
+            f"{symbol}.BO",  # BSE - Bombay Stock Exchange (India)
+            symbol,          # Original symbol (for international stocks)
         ]
         
         for variant in symbol_variants:
@@ -135,6 +172,13 @@ def get_stock_data_yfinance(symbol: str, days: int = 90) -> Optional[List[Dict]]
                 hist = ticker.history(period=f"{days}d")
                 
                 if not hist.empty:
+                    # Get exchange info
+                    info = ticker.info
+                    exchange = info.get('exchange', 'Unknown')
+                    currency = info.get('currency', 'USD')
+                    
+                    logger.info(f"Successfully retrieved data for {variant} from {exchange} in {currency}")
+                    
                     data = []
                     for date, row in hist.iterrows():
                         data.append({
@@ -143,10 +187,13 @@ def get_stock_data_yfinance(symbol: str, days: int = 90) -> Optional[List[Dict]]
                             "high": float(row["High"]),
                             "low": float(row["Low"]),
                             "close": float(row["Close"]),
-                            "volume": int(row["Volume"])
+                            "volume": int(row["Volume"]),
+                            "exchange": exchange,
+                            "currency": currency,
+                            "last_updated": convert_utc_to_ist(date)
                         })
                     
-                    logger.info(f"Retrieved {len(data)} data points using yfinance for {variant}")
+                    logger.info(f"Retrieved {len(data)} data points for {variant}")
                     return data
             except Exception as e:
                 logger.debug(f"Failed with symbol {variant}: {str(e)}")
@@ -159,6 +206,35 @@ def get_stock_data_yfinance(symbol: str, days: int = 90) -> Optional[List[Dict]]
         logger.error(f"yfinance failed for {symbol}: {str(e)}")
         return None
 
+def get_currency_info_from_data(stock_data: List[Dict]) -> Dict[str, str]:
+    """Determine currency info from actual stock data"""
+    if not stock_data:
+        return {
+            "currency": "USD",
+            "symbol": "",
+            "exchange": "US",
+            "is_indian": False
+        }
+    
+    # Get currency from the first data point
+    first_data = stock_data[0]
+    currency = first_data.get('currency', 'USD')
+    exchange = first_data.get('exchange', 'Unknown')
+    
+    # Determine if it's Indian based on exchange and currency
+    is_indian = (exchange in ['NSE', 'BSE', 'NSI', 'BSE INDIA'] or 
+                 currency == 'INR' or 
+                 exchange in ['NSE', 'BSE'])
+    
+    logger.info(f"Currency info from data: {currency}, Exchange: {exchange}, Is Indian: {is_indian}")
+    
+    return {
+        "currency": currency,
+        "symbol": "",
+        "exchange": exchange,
+        "is_indian": is_indian
+    }
+
 class StockAnalysisRequest(BaseModel):
     symbol: str
     analysis_type: str = "technical"  # technical, ai, or both
@@ -166,24 +242,34 @@ class StockAnalysisRequest(BaseModel):
 class TechnicalData(BaseModel):
     symbol: str
     current_price: float
+    current_price_formatted: str
+    currency: str
+    is_indian_stock: bool
+    last_updated: str
     rsi: float
     macd: float
     macd_signal: float
     sma_20: float
+    sma_20_formatted: str
     sma_50: float
+    sma_50_formatted: str
     volume: int
     volume_sma_20: float
     volume_ratio: float
     price_change_5d: float
     price_change_1d: float
     support_levels: list
+    support_levels_formatted: list
     resistance_levels: list
+    resistance_levels_formatted: list
     pivot_points: dict
+    pivot_points_formatted: dict
 
 class AnalysisResponse(BaseModel):
     success: bool
     data: Optional[dict] = None
     error: Optional[str] = None
+    search_limit_info: Optional[dict] = None
 
 def get_technical_analysis(symbol: str, user: User) -> TechnicalData:
     """Get technical analysis for a stock symbol"""
@@ -218,22 +304,40 @@ def get_technical_analysis(symbol: str, user: User) -> TechnicalData:
         price_change_1d = ((current_price - close_prices[-2]) / close_prices[-2]) * 100 if len(close_prices) > 1 else 0
         price_change_5d = ((current_price - close_prices[-6]) / close_prices[-6]) * 100 if len(close_prices) > 5 else 0
         
+        # Get currency info from actual data
+        currency_info = get_currency_info_from_data(stock_data)
+        logger.info(f"Currency info for {symbol}: {currency_info}")
+        
+        # Format pivot points with currency
+        pivot_points_formatted = {}
+        for key, value in pivot_points.items():
+            pivot_points_formatted[key] = format_currency(value, currency_info["currency"])
+        
         return TechnicalData(
             symbol=symbol.upper(),
             current_price=current_price,
+            current_price_formatted=format_currency(current_price, currency_info["currency"]),
+            currency=currency_info["currency"],
+            is_indian_stock=currency_info["is_indian"],
+            last_updated=stock_data[-1]["last_updated"],
             rsi=rsi,
             macd=macd[-1],
             macd_signal=macd_signal[-1],
             sma_20=sma_20,
+            sma_20_formatted=format_currency(sma_20, currency_info["currency"]),
             sma_50=sma_50,
+            sma_50_formatted=format_currency(sma_50, currency_info["currency"]),
             volume=volumes[-1],
             volume_sma_20=volume_sma_20,
             volume_ratio=volume_ratio,
             price_change_5d=price_change_5d,
             price_change_1d=price_change_1d,
             support_levels=support_levels,
+            support_levels_formatted=[format_currency(s, currency_info["currency"]) for s in support_levels],
             resistance_levels=resistance_levels,
-            pivot_points=pivot_points
+            resistance_levels_formatted=[format_currency(r, currency_info["currency"]) for r in resistance_levels],
+            pivot_points=pivot_points,
+            pivot_points_formatted=pivot_points_formatted
         )
         
     except Exception as e:
@@ -245,19 +349,19 @@ def create_analysis_prompt(tech_data: TechnicalData) -> str:
     prompt = f"""
     Analyze the following stock data for {tech_data.symbol}:
     
-    Current Price: ${tech_data.current_price:.2f}
+    Current Price: {tech_data.current_price_formatted}
     RSI: {tech_data.rsi:.2f}
     MACD: {tech_data.macd:.2f}
     MACD Signal: {tech_data.macd_signal:.2f}
-    20-day SMA: ${tech_data.sma_20:.2f}
-    50-day SMA: ${tech_data.sma_50:.2f}
+    20-day SMA: {tech_data.sma_20_formatted}
+    50-day SMA: {tech_data.sma_50_formatted}
     1-day Change: {tech_data.price_change_1d:.2f}%
     5-day Change: {tech_data.price_change_5d:.2f}%
     Volume Ratio: {tech_data.volume_ratio:.2f}
     
-    Support Levels: {tech_data.support_levels}
-    Resistance Levels: {tech_data.resistance_levels}
-    Pivot Points: {tech_data.pivot_points}
+    Support Levels: {tech_data.support_levels_formatted}
+    Resistance Levels: {tech_data.resistance_levels_formatted}
+    Pivot Points: {tech_data.pivot_points_formatted}
     
     Please provide:
     1. Technical analysis summary
@@ -294,7 +398,7 @@ async def get_ai_analysis(tech_data: TechnicalData) -> dict:
         raise
 
 def get_rule_based_analysis(tech_data: TechnicalData) -> dict:
-    """Perform rule-based analysis using technical indicators"""
+    """Perform rule-based analysis using technical indicators with weighted scoring"""
     try:
         analysis = {
             "summary": "",
@@ -302,41 +406,130 @@ def get_rule_based_analysis(tech_data: TechnicalData) -> dict:
             "confidence": "MEDIUM",
             "key_points": []
         }
-    
-        # RSI analysis
+        
+        # Initialize scoring system
+        buy_signals = 0
+        sell_signals = 0
+        total_signals = 0
+        
+        # RSI Analysis (Weight: 25%)
         if tech_data.rsi > 70:
-            analysis["key_points"].append("RSI indicates overbought conditions")
-            analysis["recommendation"] = "SELL"
+            analysis["key_points"].append("RSI indicates overbought conditions (>70)")
+            sell_signals += 1
+            total_signals += 1
         elif tech_data.rsi < 30:
-            analysis["key_points"].append("RSI indicates oversold conditions")
-            analysis["recommendation"] = "BUY"
-    
-        # MACD analysis
-        if tech_data.macd > tech_data.macd_signal:
-            analysis["key_points"].append("MACD is bullish (above signal line)")
+            analysis["key_points"].append("RSI indicates oversold conditions (<30)")
+            buy_signals += 1
+            total_signals += 1
+        elif tech_data.rsi > 60:
+            analysis["key_points"].append("RSI showing bullish momentum (60-70)")
+            buy_signals += 0.5
+            total_signals += 1
+        elif tech_data.rsi < 40:
+            analysis["key_points"].append("RSI showing bearish momentum (30-40)")
+            sell_signals += 0.5
+            total_signals += 1
         else:
-            analysis["key_points"].append("MACD is bearish (below signal line)")
-    
-        # Moving average analysis
+            analysis["key_points"].append("RSI in neutral range (40-60)")
+            total_signals += 1
+        
+        # MACD Analysis (Weight: 25%)
+        if tech_data.macd > tech_data.macd_signal:
+            if tech_data.macd > 0:
+                analysis["key_points"].append("MACD bullish and above zero line")
+                buy_signals += 1
+            else:
+                analysis["key_points"].append("MACD bullish but below zero line")
+                buy_signals += 0.5
+            total_signals += 1
+        else:
+            if tech_data.macd < 0:
+                analysis["key_points"].append("MACD bearish and below zero line")
+                sell_signals += 1
+            else:
+                analysis["key_points"].append("MACD bearish but above zero line")
+                sell_signals += 0.5
+            total_signals += 1
+        
+        # Moving Average Analysis (Weight: 20%)
         if tech_data.current_price > tech_data.sma_20 > tech_data.sma_50:
-            analysis["key_points"].append("Price above both moving averages - bullish trend")
+            analysis["key_points"].append("Price above both moving averages - strong bullish trend")
+            buy_signals += 1
+            total_signals += 1
         elif tech_data.current_price < tech_data.sma_20 < tech_data.sma_50:
-            analysis["key_points"].append("Price below both moving averages - bearish trend")
-    
-        # Volume analysis
+            analysis["key_points"].append("Price below both moving averages - strong bearish trend")
+            sell_signals += 1
+            total_signals += 1
+        elif tech_data.current_price > tech_data.sma_20:
+            analysis["key_points"].append("Price above 20-day SMA - short-term bullish")
+            buy_signals += 0.5
+            total_signals += 1
+        else:
+            analysis["key_points"].append("Price below 20-day SMA - short-term bearish")
+            sell_signals += 0.5
+            total_signals += 1
+        
+        # Volume Analysis (Weight: 15%)
         if tech_data.volume_ratio > 1.5:
-            analysis["key_points"].append("High volume indicates strong interest")
+            if buy_signals > sell_signals:
+                analysis["key_points"].append("High volume confirms bullish momentum")
+                buy_signals += 0.5
+            elif sell_signals > buy_signals:
+                analysis["key_points"].append("High volume confirms bearish momentum")
+                sell_signals += 0.5
+            else:
+                analysis["key_points"].append("High volume indicates strong interest")
+            total_signals += 1
         elif tech_data.volume_ratio < 0.5:
-            analysis["key_points"].append("Low volume indicates weak interest")
-    
-        # Price change analysis
+            analysis["key_points"].append("Low volume suggests weak conviction")
+            total_signals += 1
+        
+        # Price Momentum Analysis (Weight: 15%)
         if tech_data.price_change_1d > 2:
-            analysis["key_points"].append("Strong positive momentum")
+            analysis["key_points"].append("Strong positive daily momentum (+{:.1f}%)".format(tech_data.price_change_1d))
+            buy_signals += 0.5
+            total_signals += 1
         elif tech_data.price_change_1d < -2:
-            analysis["key_points"].append("Strong negative momentum")
-    
+            analysis["key_points"].append("Strong negative daily momentum ({:.1f}%)".format(tech_data.price_change_1d))
+            sell_signals += 0.5
+            total_signals += 1
+        
+        if tech_data.price_change_5d > 5:
+            analysis["key_points"].append("Strong weekly uptrend (+{:.1f}%)".format(tech_data.price_change_5d))
+            buy_signals += 0.5
+            total_signals += 1
+        elif tech_data.price_change_5d < -5:
+            analysis["key_points"].append("Strong weekly downtrend ({:.1f}%)".format(tech_data.price_change_5d))
+            sell_signals += 0.5
+            total_signals += 1
+        
+        # Calculate recommendation based on signal strength
+        if total_signals > 0:
+            buy_ratio = buy_signals / total_signals
+            sell_ratio = sell_signals / total_signals
+            
+            # Determine recommendation
+            if buy_ratio > 0.6:
+                analysis["recommendation"] = "BUY"
+                if buy_ratio > 0.8:
+                    analysis["confidence"] = "HIGH"
+                else:
+                    analysis["confidence"] = "MEDIUM"
+            elif sell_ratio > 0.6:
+                analysis["recommendation"] = "SELL"
+                if sell_ratio > 0.8:
+                    analysis["confidence"] = "HIGH"
+                else:
+                    analysis["confidence"] = "MEDIUM"
+            else:
+                analysis["recommendation"] = "HOLD"
+                if abs(buy_ratio - sell_ratio) < 0.2:
+                    analysis["confidence"] = "LOW"
+                else:
+                    analysis["confidence"] = "MEDIUM"
+        
         # Create summary
-        analysis["summary"] = f"Technical analysis for {tech_data.symbol}: {len(analysis['key_points'])} key indicators analyzed."
+        analysis["summary"] = f"Technical analysis for {tech_data.symbol}: {len(analysis['key_points'])} indicators analyzed. Signal strength: {buy_signals:.1f} buy vs {sell_signals:.1f} sell signals."
         
         return analysis
         
@@ -358,6 +551,22 @@ async def analyze_stock(
     """Analyze a stock using technical indicators and AI"""
     try:
         logger.info(f"Stock analysis requested for {request.symbol} by user {current_user.email}")
+        
+        # Check search limit before proceeding
+        can_search, message, remaining = await search_limit_service.check_and_increment_search_count(current_user, db)
+        
+        if not can_search:
+            logger.warning(f"User {current_user.email} exceeded daily search limit")
+            return AnalysisResponse(
+                success=False,
+                error=message,
+                search_limit_info={
+                    "daily_limit": search_limit_service.DAILY_LIMIT,
+                    "used_today": search_limit_service.DAILY_LIMIT,
+                    "remaining_today": 0,
+                    "can_search": False
+                }
+            )
         
         # Get technical analysis
         tech_data = get_technical_analysis(request.symbol, current_user)
@@ -383,11 +592,15 @@ async def analyze_stock(
             rule_analysis = get_rule_based_analysis(tech_data)
             response_data["rule_analysis"] = rule_analysis
         
-        logger.info(f"Analysis completed successfully for {request.symbol}")
+        # Get updated search status
+        search_status = await search_limit_service.get_user_search_status(current_user, db)
+        
+        logger.info(f"Analysis completed successfully for {request.symbol}. User has {remaining} searches remaining.")
         
         return AnalysisResponse(
             success=True,
-            data=response_data
+            data=response_data,
+            search_limit_info=search_status
         )
         
     except ValueError as e:
@@ -402,6 +615,19 @@ async def analyze_stock(
             success=False,
             error="Internal server error"
         )
+
+@router.get("/search-status")
+async def get_search_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get user's current search status and limits"""
+    try:
+        search_status = await search_limit_service.get_user_search_status(current_user, db)
+        return search_status
+    except Exception as e:
+        logger.error(f"Error getting search status for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get search status")
 
 @router.get("/health")
 async def health_check():

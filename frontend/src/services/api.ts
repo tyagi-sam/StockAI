@@ -44,6 +44,7 @@ export const stockAnalysis = {
   analyze: (symbol: string, analysis_type: 'technical' | 'ai' | 'both' = 'technical') => 
     api.post('/search/analyze', { symbol, analysis_type }),
   getHealth: () => api.get('/search/health'),
+  getSearchStatus: () => api.get('/search/search-status'),
 };
 
 export default api; 
