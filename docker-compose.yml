@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: db
+    container_name: stock_ai_postgres
     environment:
       POSTGRES_DB: stock_ai
       POSTGRES_USER: stock_ai_user
@@ -24,7 +22,7 @@ services:
   # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: stock_ai_redis
     ports:
       - "6379:6379"
     volumes:
@@ -42,21 +40,32 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: backend
+    container_name: stock_ai_backend
     environment:
       - DATABASE_URL=postgresql://stock_ai_user:stock_ai_password@postgres:5432/stock_ai
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
+      - FERNET_KEY=${FERNET_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - ZERODHA_API_KEY=${ZERODHA_API_KEY}
       - ZERODHA_API_SECRET=${ZERODHA_API_SECRET}
-      - ZERODHA_REDIRECT_URL=${ZERODHA_REDIRECT_URL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - FERNET_KEY=${FERNET_KEY}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_TLS=${SMTP_TLS}
+      - SMTP_SSL=${SMTP_SSL}
+      - FROM_EMAIL=${FROM_EMAIL}
+      - FROM_NAME=${FROM_NAME}
+      - OTP_EXPIRE_MINUTES=${OTP_EXPIRE_MINUTES}
+      - OTP_LENGTH=${OTP_LENGTH}
+      - ENVIRONMENT=${ENVIRONMENT}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
       - FRONTEND_URL=${FRONTEND_URL}
       - WS_URL=ws://localhost:8000
       - NEXT_PUBLIC_WS_URL=ws://localhost:8000
-      - BACKEND_CORS_ORIGINS=http://localhost:3000,http://frontend:3000
-      - ENVIRONMENT=development
     ports:
       - "8000:8000"
     depends_on:
