@@ -4,7 +4,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: stock_ai_postgres
+    container_name: db
     environment:
       POSTGRES_DB: stock_ai
       POSTGRES_USER: stock_ai_user
@@ -24,7 +24,7 @@ services:
   # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: stock_ai_redis
+    container_name: redis
     ports:
       - "6379:6379"
     volumes:
@@ -42,7 +42,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: stock_ai_backend
+    container_name: backend
     environment:
       - DATABASE_URL=postgresql://stock_ai_user:stock_ai_password@postgres:5432/stock_ai
       - REDIS_URL=redis://redis:6379
@@ -70,14 +70,14 @@ services:
       - ./backend:/app
     restart: unless-stopped
 
-  # Frontend
+  # Frontend (React)
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend-react
       dockerfile: Dockerfile
     container_name: stock_ai_frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:
@@ -85,7 +85,7 @@ services:
     networks:
       - stock_ai_network
     volumes:
-      - ./frontend:/app
+      - ./frontend-react:/app
       - /app/node_modules
     restart: unless-stopped
 
