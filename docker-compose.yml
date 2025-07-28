@@ -42,7 +42,7 @@ services:
       dockerfile: Dockerfile
     container_name: stock_ai_backend
     environment:
-      - DATABASE_URL=postgresql+asyncpg://stock_ai_user:stock_ai_password@postgres:5432/stock_ai
+      - DATABASE_URL=postgresql://stock_ai_user:stock_ai_password@postgres:5432/stock_ai
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - FERNET_KEY=${FERNET_KEY}
