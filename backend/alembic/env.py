@@ -34,7 +34,11 @@ target_metadata = Base.metadata
 
 def get_url():
     """Get database URL from environment variable or config"""
-    return os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    # Convert to async URL if not already async
+    if url and not url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://")
+    return url
 
 
 def run_migrations_offline() -> None:
