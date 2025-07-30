@@ -13,6 +13,7 @@ from app.core.auth import get_current_user
 from app.models.user import User
 from app.services.search_limit import SearchLimitService
 from app.services.technical_indicators import get_technical_indicators
+from app.services.stock_cache import stock_cache_service
 from app.core.config import settings
 from app.core.logger import logger
 
@@ -397,6 +398,27 @@ async def get_ai_analysis(tech_data: TechnicalData) -> dict:
         logger.error(f"Error getting AI analysis: {e}", exc_info=True)
         raise
 
+def filter_analysis_by_type(analysis_data: dict, requested_type: str) -> dict:
+    """Filter analysis data to return only the requested analysis type"""
+    filtered_data = {
+        "symbol": analysis_data["symbol"],
+        "analysis_type": requested_type
+    }
+    
+    # Always include technical data
+    if "technical_data" in analysis_data:
+        filtered_data["technical_data"] = analysis_data["technical_data"]
+    
+    # Include AI analysis only if requested
+    if requested_type in ["ai", "both"] and "ai_analysis" in analysis_data:
+        filtered_data["ai_analysis"] = analysis_data["ai_analysis"]
+    
+    # Include rule analysis only if requested
+    if requested_type in ["technical", "both"] and "rule_analysis" in analysis_data:
+        filtered_data["rule_analysis"] = analysis_data["rule_analysis"]
+    
+    return filtered_data
+
 def get_rule_based_analysis(tech_data: TechnicalData) -> dict:
     """Perform rule-based analysis using technical indicators with weighted scoring"""
     try:
@@ -552,7 +574,24 @@ async def analyze_stock(
     try:
         logger.info(f"Stock analysis requested for {request.symbol} by user {current_user.email}")
         
-        # Check search limit before proceeding
+        # Check if we have cached data first
+        cached_analysis = stock_cache_service.get_cached_analysis(current_user.id, request.symbol)
+        if cached_analysis:
+            logger.info(f"Using cached analysis for {request.symbol} for user {current_user.email}")
+            
+            # Filter the cached data to return only the requested analysis type
+            filtered_data = filter_analysis_by_type(cached_analysis, request.analysis_type)
+            
+            # Get search status without incrementing (since we're using cache)
+            search_status = await SearchLimitService.get_user_search_status(current_user, db)
+            
+            return AnalysisResponse(
+                success=True,
+                data=filtered_data,
+                search_limit_info=search_status
+            )
+        
+        # Check search limit before proceeding with new analysis
         can_search, message, remaining = await SearchLimitService.check_and_increment_search_count(current_user, db)
         
         if not can_search:
@@ -566,26 +605,31 @@ async def analyze_stock(
         # Get technical analysis
         tech_data = get_technical_analysis(request.symbol, current_user)
         
-        # Prepare response data
-        response_data = {
+        # Always prepare full analysis data (both technical and AI)
+        full_response_data = {
             "symbol": tech_data.symbol,
             "technical_data": tech_data.dict(),
-            "analysis_type": request.analysis_type
+            "analysis_type": "both"
         }
         
-        # Add AI analysis if requested and available
-        if request.analysis_type in ["ai", "both"] and client:
+        # Add AI analysis if available
+        if client:
             try:
                 ai_analysis = await get_ai_analysis(tech_data)
-                response_data["ai_analysis"] = ai_analysis
+                full_response_data["ai_analysis"] = ai_analysis
             except Exception as e:
                 logger.warning(f"AI analysis failed for {request.symbol}: {e}")
-                response_data["ai_analysis"] = {"error": "AI analysis unavailable"}
+                full_response_data["ai_analysis"] = {"error": "AI analysis unavailable"}
         
-        # Add rule-based analysis as fallback
-        if request.analysis_type in ["technical", "both"] or not client:
-            rule_analysis = get_rule_based_analysis(tech_data)
-            response_data["rule_analysis"] = rule_analysis
+        # Add rule-based analysis
+        rule_analysis = get_rule_based_analysis(tech_data)
+        full_response_data["rule_analysis"] = rule_analysis
+        
+        # Store the full analysis in cache
+        stock_cache_service.store_stock_analysis(current_user.id, request.symbol, full_response_data)
+        
+        # Filter the response to return only the requested analysis type
+        response_data = filter_analysis_by_type(full_response_data, request.analysis_type)
         
         # Get updated search status
         search_status = await SearchLimitService.get_user_search_status(current_user, db)
@@ -623,6 +667,69 @@ async def get_search_status(
     except Exception as e:
         logger.error(f"Error getting search status for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error getting search status")
+
+@router.get("/todays-searches")
+async def get_todays_searches(
+    current_user: User = Depends(get_current_user)
+):
+    """Get today's searches for the current user"""
+    try:
+        searches = stock_cache_service.get_todays_searches_with_data(current_user.id)
+        
+        # Format the response to include basic info for list view
+        formatted_searches = []
+        for search in searches:
+            analysis_data = search.get("analysis_data", {})
+            technical_data = analysis_data.get("technical_data", {})
+            
+            # Extract basic info for list view
+            basic_info = {
+                "symbol": search["symbol"],
+                "timestamp": search["timestamp"],
+                "current_price": technical_data.get("current_price", 0),
+                "confidence_level": technical_data.get("recommendation", "HOLD"),
+                "price_change_1d": technical_data.get("price_change_1d", 0),
+                "currency": technical_data.get("currency", "USD")
+            }
+            
+            formatted_searches.append(basic_info)
+        
+        return {
+            "success": True,
+            "data": formatted_searches,
+            "count": len(formatted_searches)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get today's searches for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get today's searches")
+
+@router.get("/todays-searches/{symbol}")
+async def get_todays_search_detail(
+    symbol: str,
+    analysis_type: str = "technical",
+    current_user: User = Depends(get_current_user)
+):
+    """Get detailed analysis for a specific stock from today's searches"""
+    try:
+        cached_analysis = stock_cache_service.get_cached_analysis(current_user.id, symbol)
+        
+        if not cached_analysis:
+            raise HTTPException(status_code=404, detail="Stock not found in today's searches")
+        
+        # Filter the cached data to return only the requested analysis type
+        filtered_data = filter_analysis_by_type(cached_analysis, analysis_type)
+        
+        return {
+            "success": True,
+            "data": filtered_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get search detail for user {current_user.id}, symbol {symbol}, type {analysis_type}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get search detail")
 
 @router.get("/health")
 async def health_check():

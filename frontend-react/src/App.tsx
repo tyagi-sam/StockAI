@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LoginForm from './components/auth/LoginForm';
 import Dashboard from './pages/Dashboard';
+import TodaysSearches from './pages/TodaysSearches';
 import AuthCallback from './pages/AuthCallback';
 import ProtectedRoute from './components/common/ProtectedRoute';
 
@@ -15,6 +16,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/todays-searches" 
+          element={
+            <ProtectedRoute>
+              <TodaysSearches />
             </ProtectedRoute>
           } 
         />

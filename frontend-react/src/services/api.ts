@@ -45,6 +45,8 @@ export const stockAnalysis = {
     api.post('/search/analyze', { symbol, analysis_type }),
   getHealth: () => api.get('/search/health'),
   getSearchStatus: () => api.get('/search/search-status'),
+  getTodaysSearches: () => api.get('/search/todays-searches'),
+  getTodaysSearchDetail: (symbol: string, analysis_type: string = 'technical') => api.get(`/search/todays-searches/${symbol}?analysis_type=${analysis_type}`),
 };
 
 export default api; 

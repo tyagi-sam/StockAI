@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { useNavigate } from 'react-router-dom';
 import { stockAnalysis } from '../../services/api';
 import Button from '../common/Button';
 import Input from '../common/Input';
@@ -8,6 +9,7 @@ import Card, { CardHeader, CardBody } from '../common/Card';
 import type { AnalysisResult, SearchLimitInfo, Message } from '../../types';
 
 export default function StockAnalysis() {
+  const navigate = useNavigate();
   const [symbol, setSymbol] = useState('');
   const [analysisType, setAnalysisType] = useState<'technical' | 'ai' | 'both'>('both');
   const [loading, setLoading] = useState(false);
@@ -145,12 +147,26 @@ export default function StockAnalysis() {
       {/* Search Form */}
       <Card id="search-form-card" className="mb-8">
         <CardHeader>
-          <h2 id="search-form-title" className="text-xl font-bold text-gray-900">
-            Stock Analysis
-          </h2>
-          <p id="search-form-subtitle" className="text-sm text-gray-600">
-            Get AI-powered analysis and technical indicators for any stock
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 id="search-form-title" className="text-xl font-bold text-gray-900">
+                Stock Analysis
+              </h2>
+              <p id="search-form-subtitle" className="text-sm text-gray-600">
+                Get AI-powered analysis and technical indicators for any stock
+              </p>
+            </div>
+            <Button
+              id="todays-searches-button"
+              onClick={() => navigate('/todays-searches')}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              Today's Searches
+            </Button>
+          </div>
         </CardHeader>
         
         <CardBody>

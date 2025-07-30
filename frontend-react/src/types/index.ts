@@ -155,4 +155,24 @@ export interface SearchStatusResponse {
 export interface Message {
   type: 'success' | 'error' | 'warning' | 'info';
   text: string;
+}
+
+export interface TodaysSearch {
+  symbol: string;
+  timestamp: string;
+  current_price: number;
+  confidence_level: string;
+  price_change_1d: number;
+  currency: string;
+}
+
+export interface TodaysSearchesResponse {
+  success: boolean;
+  data: TodaysSearch[];
+  count: number;
+}
+
+export interface TodaysSearchDetailResponse {
+  success: boolean;
+  data: AnalysisResult;
 } 
