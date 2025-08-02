@@ -8,6 +8,118 @@ import Alert from '../common/Alert';
 import Card, { CardHeader, CardBody } from '../common/Card';
 import type { AnalysisResult, SearchLimitInfo, Message } from '../../types';
 
+// Tooltip component with better positioning
+const Tooltip = ({ children, content }: { children: React.ReactNode; content: string }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    setMousePosition({ x: e.clientX, y: e.clientY });
+    setIsVisible(true);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setMousePosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseLeave = () => {
+    setIsVisible(false);
+  };
+
+  return (
+    <div className="relative inline-block">
+      <div
+        onMouseEnter={handleMouseEnter}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        className="cursor-help"
+      >
+        {children}
+      </div>
+      {isVisible && (
+        <div 
+          className="fixed z-[9999] w-64 p-3 text-sm text-white bg-gray-900 rounded-lg shadow-lg pointer-events-none"
+          style={{
+            left: mousePosition.x + 10,
+            top: mousePosition.y - 10,
+            transform: 'translateY(-100%)'
+          }}
+        >
+          {content}
+          <div className="absolute top-full left-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Disclaimer Modal component
+const DisclaimerModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">Important Disclaimer</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="space-y-4 text-sm text-gray-700">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-amber-800 mb-2">Financial Disclaimer</h3>
+                <p className="mb-3">
+                  This analysis is for informational purposes only and should not be considered as financial advice. 
+                  Stock market investments carry inherent risks, and past performance does not guarantee future results.
+                </p>
+                <p className="mb-3">
+                  Always consult with a qualified financial advisor, broker, or investment professional before making 
+                  any investment decisions. The technical indicators and AI analysis provided are tools to assist in 
+                  your research, but they should be used as part of a comprehensive investment strategy.
+                </p>
+                <p className="mb-3">
+                  <strong>Key Points:</strong>
+                </p>
+                <ul className="list-disc list-inside space-y-1 ml-4">
+                  <li>This is not investment advice</li>
+                  <li>Past performance doesn't guarantee future results</li>
+                  <li>Always consult a financial advisor</li>
+                  <li>Consider your risk tolerance and investment goals</li>
+                  <li>Diversify your portfolio</li>
+                  <li>Never invest more than you can afford to lose</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-6 flex justify-end">
+            <Button
+              onClick={onClose}
+              className="bg-primary-600 hover:bg-primary-700 text-white"
+            >
+              I Understand
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function StockAnalysis() {
   const navigate = useNavigate();
   const [symbol, setSymbol] = useState('');
@@ -16,6 +128,7 @@ export default function StockAnalysis() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [searchLimitInfo, setSearchLimitInfo] = useState<SearchLimitInfo | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   // Fetch search status on component mount
   useEffect(() => {
@@ -102,6 +215,9 @@ export default function StockAnalysis() {
 
   return (
     <div id="stock-analysis-container" className="max-w-6xl mx-auto px-4 py-8">
+      {/* Disclaimer Modal */}
+      <DisclaimerModal isOpen={showDisclaimer} onClose={() => setShowDisclaimer(false)} />
+
       {/* Search Limit Info */}
       {searchLimitInfo && (
         <div id="search-limit-info" className="mb-6 p-4 bg-primary-50 border border-primary-200 rounded-lg">
@@ -156,16 +272,27 @@ export default function StockAnalysis() {
                 Get AI-powered analysis and technical indicators for any stock
               </p>
             </div>
-            <Button
-              id="todays-searches-button"
-              onClick={() => navigate('/todays-searches')}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              Today's Searches
-            </Button>
+            <div className="flex items-center space-x-3">
+              <Button
+                onClick={() => setShowDisclaimer(true)}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-sm"
+              >
+                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                Read Disclaimer
+              </Button>
+              <Button
+                id="todays-searches-button"
+                onClick={() => navigate('/todays-searches')}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Today's Searches
+              </Button>
+            </div>
           </div>
         </CardHeader>
         
@@ -262,7 +389,14 @@ export default function StockAnalysis() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Current Price */}
                   <div id="current-price-section" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Current Price</h4>
+                    <Tooltip content="The current market price of the stock. This is the most recent price at which the stock was traded.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        Current Price
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <p className="text-2xl font-bold text-gray-900">
                       {result.technical_data.current_price_formatted}
                     </p>
@@ -273,7 +407,14 @@ export default function StockAnalysis() {
 
                   {/* RSI */}
                   <div id="rsi-section" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">RSI</h4>
+                    <Tooltip content="Relative Strength Index (RSI) measures the speed and magnitude of price changes. Values above 70 indicate overbought conditions, while values below 30 indicate oversold conditions. RSI helps identify potential reversal points.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        RSI
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <p className="text-2xl font-bold text-gray-900">
                       {result.technical_data.rsi.toFixed(2)}
                     </p>
@@ -284,7 +425,14 @@ export default function StockAnalysis() {
 
                   {/* MACD */}
                   <div id="macd-section" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">MACD</h4>
+                    <Tooltip content="Moving Average Convergence Divergence (MACD) is a trend-following momentum indicator. It shows the relationship between two moving averages of a stock's price. When MACD crosses above the signal line, it's considered bullish; when it crosses below, it's bearish.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        MACD
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <p className="text-2xl font-bold text-gray-900">
                       {result.technical_data.macd.toFixed(4)}
                     </p>
@@ -295,7 +443,14 @@ export default function StockAnalysis() {
 
                   {/* Moving Averages */}
                   <div id="moving-averages-section" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Moving Averages</h4>
+                    <Tooltip content="Simple Moving Averages (SMA) show the average price over a specific period. SMA 20 represents the average price over 20 days, while SMA 50 represents 50 days. When the current price is above the moving average, it's generally considered bullish.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        Moving Averages
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <p className="text-lg font-semibold text-gray-900">
                       SMA 20: {result.technical_data.sma_20_formatted}
                     </p>
@@ -306,7 +461,14 @@ export default function StockAnalysis() {
 
                   {/* Volume */}
                   <div id="volume-section" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Volume</h4>
+                    <Tooltip content="Volume indicates the number of shares traded. High volume often confirms price movements - if a stock rises on high volume, it's more likely to continue rising. Volume ratio compares current volume to the 20-day average.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        Volume
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <p className="text-lg font-semibold text-gray-900">
                       {result.technical_data.volume.toLocaleString()}
                     </p>
@@ -317,7 +479,14 @@ export default function StockAnalysis() {
 
                   {/* Price Change */}
                   <div id="price-change-section" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Price Change</h4>
+                    <Tooltip content="Price change shows the percentage movement over different time periods. 1D shows yesterday's change, 5D shows the change over the past 5 trading days. These help understand short-term momentum.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        Price Change
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <p className={`text-lg font-semibold ${result.technical_data.price_change_1d >= 0 ? 'text-success-600' : 'text-error-600'}`}>
                       1D: {result.technical_data.price_change_1d >= 0 ? '+' : ''}{result.technical_data.price_change_1d.toFixed(2)}%
                     </p>
@@ -330,7 +499,14 @@ export default function StockAnalysis() {
                 {/* Support & Resistance */}
                 <div id="support-resistance-section" className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div id="support-levels" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Support Levels</h4>
+                    <Tooltip content="Support levels are price points where the stock has historically found buying interest and bounced back up. These levels can act as floors where the price might stop falling.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        Support Levels
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <div className="space-y-1">
                       {result.technical_data.support_levels_formatted.map((level, index) => (
                         <p key={index} className="text-sm text-gray-900">{level}</p>
@@ -339,7 +515,14 @@ export default function StockAnalysis() {
                   </div>
                   
                   <div id="resistance-levels" className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Resistance Levels</h4>
+                    <Tooltip content="Resistance levels are price points where the stock has historically faced selling pressure and struggled to move higher. These levels can act as ceilings where the price might stop rising.">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        Resistance Levels
+                        <svg className="w-4 h-4 ml-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </h4>
+                    </Tooltip>
                     <div className="space-y-1">
                       {result.technical_data.resistance_levels_formatted.map((level, index) => (
                         <p key={index} className="text-sm text-gray-900">{level}</p>
