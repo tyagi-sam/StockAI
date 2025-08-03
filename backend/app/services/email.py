@@ -25,6 +25,7 @@ class EmailService:
         message["Subject"] = subject
         message["From"] = f"{self.from_name} <{self.from_email}>"
         message["To"] = to_email
+        message["Reply-To"] = "support@stock-satta.online"  # Set reply-to to support email
         
         # Add text and HTML parts
         if text_content:
@@ -132,6 +133,45 @@ class EmailService:
         """
         
         message = self._create_message(to_email, subject, html_content, text_content)
+        return self._send_email(message)
+    
+    def send_email(self, to_email: str, subject: str, body: str) -> bool:
+        """Send a generic email"""
+        # Create simple HTML content
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>{subject}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+                .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
+                .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 14px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🎯 StockAI</h1>
+                    <p>{subject}</p>
+                </div>
+                <div class="content">
+                    {body.replace(chr(10), '<br>')}
+                </div>
+                <div class="footer">
+                    <p>This is an automated message, please do not reply to this email.</p>
+                    <p>&copy; 2024 StockAI. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        message = self._create_message(to_email, subject, html_content, body)
         return self._send_email(message)
     
     def send_welcome_email(self, to_email: str, name: str) -> bool:
