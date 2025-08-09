@@ -92,6 +92,8 @@ services:
     build:
       context: ./frontend-react
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://stock-satta.online/api/v1
     container_name: stock_ai_frontend_prod
     environment:
       - VITE_API_URL=https://stock-satta.online/api/v1
