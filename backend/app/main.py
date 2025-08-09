@@ -89,7 +89,7 @@ if settings.ENVIRONMENT == "development":
     allowed_hosts = ["localhost", "127.0.0.1", "0.0.0.0"]
 else:
     # In production, specify your actual domain names
-    allowed_hosts = ["localhost", "127.0.0.1"]  # Add your production domains here
+    allowed_hosts = ["localhost", "127.0.0.1", "stock-satta.online", "www.stock-satta.online"]
 
 app.add_middleware(
     TrustedHostMiddleware,

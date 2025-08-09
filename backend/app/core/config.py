@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # Email Templates
     FROM_EMAIL: str = "noreply@stockai.com"
     FROM_NAME: str = "StockAI"
+    REPLY_TO_EMAIL: str = "support@stock-satta.online"
     
     # OTP Configuration
     OTP_EXPIRE_MINUTES: int = 10

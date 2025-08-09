@@ -25,7 +25,10 @@ class EmailService:
         message["Subject"] = subject
         message["From"] = f"{self.from_name} <{self.from_email}>"
         message["To"] = to_email
-        message["Reply-To"] = "support@stock-satta.online"  # Set reply-to to support email
+        
+        # Set reply-to from environment variable
+        reply_to = getattr(settings, 'REPLY_TO_EMAIL', 'support@stock-satta.online')
+        message["Reply-To"] = reply_to
         
         # Add text and HTML parts
         if text_content:

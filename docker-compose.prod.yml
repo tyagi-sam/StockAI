@@ -94,7 +94,7 @@ services:
       dockerfile: Dockerfile
     container_name: stock_ai_frontend_prod
     environment:
-      - VITE_API_URL=${FRONTEND_URL:-https://stock-satta.online}
+      - VITE_API_URL=https://stock-satta.online/api/v1
     expose:
       - "80"
     depends_on:
