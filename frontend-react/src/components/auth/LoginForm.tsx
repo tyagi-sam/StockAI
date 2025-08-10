@@ -20,6 +20,19 @@ export default function LoginForm() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [message, setMessage] = useState<Message | null>(null);
 
+  // Dynamic welcome messages for login
+  const loginMessages = [
+    'Ready to analyze stocks? Sign in to continue.',
+    'Welcome back! Let\'s dive into some stock analysis.',
+    'Time to check those market trends. Sign in here.',
+    'Your stock insights await. Please sign in.',
+    'Ready for some AI-powered analysis? Sign in below.'
+  ];
+
+  const getRandomLoginMessage = () => {
+    return loginMessages[Math.floor(Math.random() * loginMessages.length)];
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -94,7 +107,7 @@ export default function LoginForm() {
               {isLogin ? 'Sign in to StockAI' : 'Create your account'}
             </h2>
             <p id="login-subtitle" className="mt-2 text-sm text-gray-600">
-              {isLogin ? 'Welcome back! Please sign in to your account.' : 'Start your stock analysis journey today.'}
+              {isLogin ? getRandomLoginMessage() : 'Start your stock analysis journey today.'}
             </p>
           </CardHeader>
 
