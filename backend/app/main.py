@@ -96,9 +96,8 @@ app.add_middleware(
     allowed_hosts=allowed_hosts
 )
 
-# Add HTTPS redirect in production
-if settings.ENVIRONMENT != "development":
-    app.add_middleware(HTTPSRedirectMiddleware)
+# HTTPS redirect is handled by nginx in production
+# No need for HTTPSRedirectMiddleware here
 
 # Include routers
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
