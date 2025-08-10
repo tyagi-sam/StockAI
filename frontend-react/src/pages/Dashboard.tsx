@@ -200,7 +200,7 @@ export default function Dashboard() {
                 id="support-button"
                 onClick={() => setMessage({ 
                   type: 'info', 
-                  text: 'Support: For any queries or issues, please email us at support@stockai.com. We typically respond within 24 hours.' 
+                  text: 'Support: For any queries or issues, please email us at support@stock-satta.online. We typically respond within 24 hours.' 
                 })}
                 className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
               >
