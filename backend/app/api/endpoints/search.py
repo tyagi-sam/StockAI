@@ -4,7 +4,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from openai import OpenAI
@@ -16,6 +16,7 @@ from app.services.technical_indicators import get_technical_indicators
 from app.services.stock_cache import stock_cache_service
 from app.core.config import settings
 from app.core.logger import logger
+from app.core.rate_limiter import limiter
 
 router = APIRouter()
 
@@ -565,22 +566,24 @@ def get_rule_based_analysis(tech_data: TechnicalData) -> dict:
         }
 
 @router.post("/analyze", response_model=AnalysisResponse)
+@limiter.limit("3/minute")
 async def analyze_stock(
-    request: StockAnalysisRequest,
+    request: Request,
+    stock_request: StockAnalysisRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Analyze a stock using technical indicators and AI"""
     try:
-        logger.info(f"Stock analysis requested for {request.symbol} by user {current_user.email}")
+        logger.info(f"Stock analysis requested for {stock_request.symbol} by user {current_user.email}")
         
         # Check if we have cached data first
-        cached_analysis = stock_cache_service.get_cached_analysis(current_user.id, request.symbol)
+        cached_analysis = stock_cache_service.get_cached_analysis(current_user.id, stock_request.symbol)
         if cached_analysis:
             logger.info(f"Using cached analysis for {request.symbol} for user {current_user.email}")
             
             # Filter the cached data to return only the requested analysis type
-            filtered_data = filter_analysis_by_type(cached_analysis, request.analysis_type)
+            filtered_data = filter_analysis_by_type(cached_analysis, stock_request.analysis_type)
             
             # Get search status without incrementing (since we're using cache)
             search_status = await SearchLimitService.get_user_search_status(current_user, db)
@@ -603,7 +606,7 @@ async def analyze_stock(
             )
         
         # Get technical analysis
-        tech_data = get_technical_analysis(request.symbol, current_user)
+        tech_data = get_technical_analysis(stock_request.symbol, current_user)
         
         # Always prepare full analysis data (both technical and AI)
         full_response_data = {
@@ -618,7 +621,7 @@ async def analyze_stock(
                 ai_analysis = await get_ai_analysis(tech_data)
                 full_response_data["ai_analysis"] = ai_analysis
             except Exception as e:
-                logger.warning(f"AI analysis failed for {request.symbol}: {e}")
+                logger.warning(f"AI analysis failed for {stock_request.symbol}: {e}")
                 full_response_data["ai_analysis"] = {"error": "AI analysis unavailable"}
         
         # Add rule-based analysis
@@ -626,15 +629,15 @@ async def analyze_stock(
         full_response_data["rule_analysis"] = rule_analysis
         
         # Store the full analysis in cache
-        stock_cache_service.store_stock_analysis(current_user.id, request.symbol, full_response_data)
+        stock_cache_service.store_stock_analysis(current_user.id, stock_request.symbol, full_response_data)
         
         # Filter the response to return only the requested analysis type
-        response_data = filter_analysis_by_type(full_response_data, request.analysis_type)
+        response_data = filter_analysis_by_type(full_response_data, stock_request.analysis_type)
         
         # Get updated search status
         search_status = await SearchLimitService.get_user_search_status(current_user, db)
         
-        logger.info(f"Analysis completed successfully for {request.symbol}. User has {remaining} searches remaining.")
+        logger.info(f"Analysis completed successfully for {stock_request.symbol}. User has {remaining} searches remaining.")
         
         return AnalysisResponse(
             success=True,
@@ -643,20 +646,22 @@ async def analyze_stock(
         )
         
     except ValueError as e:
-        logger.warning(f"Invalid request for {request.symbol}: {e}")
+        logger.warning(f"Invalid request for {stock_request.symbol}: {e}")
         return AnalysisResponse(
             success=False,
             error=str(e)
         )
     except Exception as e:
-        logger.error(f"Analysis failed for {request.symbol}: {e}", exc_info=True)
+        logger.error(f"Analysis failed for {stock_request.symbol}: {e}", exc_info=True)
         return AnalysisResponse(
             success=False,
             error="Internal server error"
         )
 
 @router.get("/search-status")
+@limiter.limit("20/minute")
 async def get_search_status(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -669,7 +674,9 @@ async def get_search_status(
         raise HTTPException(status_code=500, detail="Error getting search status")
 
 @router.get("/todays-searches")
+@limiter.limit("20/minute")
 async def get_todays_searches(
+    request: Request,
     current_user: User = Depends(get_current_user)
 ):
     """Get today's searches for the current user"""
@@ -705,7 +712,9 @@ async def get_todays_searches(
         raise HTTPException(status_code=500, detail="Failed to get today's searches")
 
 @router.get("/todays-searches/{symbol}")
+@limiter.limit("20/minute")
 async def get_todays_search_detail(
+    request: Request,
     symbol: str,
     analysis_type: str = "technical",
     current_user: User = Depends(get_current_user)
@@ -732,7 +741,8 @@ async def get_todays_search_detail(
         raise HTTPException(status_code=500, detail="Failed to get search detail")
 
 @router.get("/health")
-async def health_check():
+@limiter.limit("30/minute")
+async def health_check(request: Request):
     """Health check for search service"""
     try:
         return {

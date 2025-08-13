@@ -16,6 +16,7 @@ from ...models.user import User
 from ...core.logger import logger
 from ...services.email import email_service
 from ...services.otp import otp_service
+from ...core.rate_limiter import limiter
 
 router = APIRouter()
 
@@ -31,7 +32,9 @@ class UserCreate:
         self.name = name
 
 @router.post("/login")
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
@@ -83,7 +86,9 @@ async def login(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/register")
+@limiter.limit("3/minute")
 async def register(
+    request: Request,
     user_data: dict,
     db: AsyncSession = Depends(get_db)
 ):
@@ -159,7 +164,9 @@ async def register(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/verify-email")
+@limiter.limit("5/minute")
 async def verify_email(
+    request: Request,
     verification_data: dict,
     db: AsyncSession = Depends(get_db)
 ):
@@ -224,7 +231,9 @@ async def verify_email(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/resend-otp")
+@limiter.limit("3/minute")
 async def resend_otp(
+    request: Request,
     resend_data: dict,
     db: AsyncSession = Depends(get_db)
 ):

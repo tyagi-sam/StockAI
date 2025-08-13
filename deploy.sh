@@ -213,6 +213,9 @@ if docker-compose -f docker-compose.prod.yml up -d --build; then
     echo "   - Configure firewall rules"
     echo "   - Set up monitoring and logging"
     echo "   - Regular backups of postgres_data volume"
+    echo "   - Rate limiting is enabled (3/min for search, 5/min for auth)"
+    echo "   - Security monitoring script available: python security_monitor.py"
+    echo "   - Cost monitoring script available: python aws_cost_monitoring.py"
 
 else
     print_error ""
