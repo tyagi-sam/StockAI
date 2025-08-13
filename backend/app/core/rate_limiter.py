@@ -87,8 +87,11 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     """
     log_rate_limit_violation(request, request.url.path)
     
+    # Get retry_after if available, otherwise use default
+    retry_after = getattr(exc, 'retry_after', 60)  # Default 60 seconds
+    
     return {
         "error": "Rate limit exceeded",
         "message": "Too many requests. Please try again later.",
-        "retry_after": exc.retry_after
+        "retry_after": retry_after
     } 
