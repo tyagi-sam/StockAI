@@ -1,7 +1,8 @@
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, Response
+from fastapi.responses import JSONResponse
 from typing import Optional
 import logging
 
@@ -90,8 +91,11 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     # Get retry_after if available, otherwise use default
     retry_after = getattr(exc, 'retry_after', 60)  # Default 60 seconds
     
-    return {
-        "error": "Rate limit exceeded",
-        "message": "Too many requests. Please try again later.",
-        "retry_after": retry_after
-    } 
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "Rate limit exceeded",
+            "message": "Too many requests. Please try again later.",
+            "retry_after": retry_after
+        }
+    ) 
