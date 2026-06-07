@@ -580,7 +580,7 @@ async def analyze_stock(
         # Check if we have cached data first
         cached_analysis = stock_cache_service.get_cached_analysis(current_user.id, stock_request.symbol)
         if cached_analysis:
-            logger.info(f"Using cached analysis for {request.symbol} for user {current_user.email}")
+            logger.info(f"Using cached analysis for {stock_request.symbol} for user {current_user.email}")
             
             # Filter the cached data to return only the requested analysis type
             filtered_data = filter_analysis_by_type(cached_analysis, stock_request.analysis_type)
