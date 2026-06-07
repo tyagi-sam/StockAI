@@ -87,8 +87,9 @@ services:
     staticPublishPath: ./dist
     envVars:
       # Baked into the build — points at the backend service above.
+      # NOTE: backend URL got a "-f777" suffix because the name was taken.
       - key: VITE_API_URL
-        value: https://stockai-backend.onrender.com/api/v1
+        value: https://stockai-backend-f777.onrender.com/api/v1
     routes:
       - type: rewrite      # SPA: send all paths to index.html for react-router
         source: /*

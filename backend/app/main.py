@@ -5,6 +5,7 @@ from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 import logging
+import os
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
@@ -97,8 +98,12 @@ app.add_middleware(
 if settings.ENVIRONMENT == "development":
     allowed_hosts = ["localhost", "127.0.0.1", "0.0.0.0"]
 else:
-    # In production, specify your actual domain names
-    allowed_hosts = ["localhost", "127.0.0.1", "stock-satta.online", "www.stock-satta.online"]
+    # Production: loopback + Render hosts (health checks hit *.onrender.com),
+    # plus anything in the optional ALLOWED_HOSTS env var (comma-separated,
+    # e.g. "myapp.onrender.com,mydomain.com" — supports "*" wildcards).
+    allowed_hosts = ["localhost", "127.0.0.1", "*.onrender.com"]
+    extra_hosts = os.getenv("ALLOWED_HOSTS", "")
+    allowed_hosts += [h.strip() for h in extra_hosts.split(",") if h.strip()]
 
 app.add_middleware(
     TrustedHostMiddleware,
