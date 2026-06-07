@@ -3,7 +3,7 @@
 > AI-powered stock analysis web app — search any stock, get technical indicators and an AI-generated summary, with per-user daily search limits and secure auth.
 
 <p align="center">
-  <strong>🔗 Live demo: <a href="https://stockai-tyagi-frontend.onrender.com">stockai-tyagi-frontend.onrender.com</a></strong><br>
+  <strong>🔗 Live demo: <a href="https://stockai-frontend.onrender.com">stockai-frontend.onrender.com</a></strong><br>
   <sub>Hosted on Render's free tier — the first request after idle may take ~50s to wake.</sub>
 </p>
 
