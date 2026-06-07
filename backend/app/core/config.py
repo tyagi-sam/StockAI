@@ -24,10 +24,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
     
-    # Zerodha (for stock data - using our API key)
-    ZERODHA_API_KEY: str
-    ZERODHA_API_SECRET: str
-    
+    # Zerodha (optional — kept for future features; app currently uses Yahoo Finance)
+    ZERODHA_API_KEY: Optional[str] = None
+    ZERODHA_API_SECRET: Optional[str] = None
+
     # AI Analysis
     OPENAI_API_KEY: Optional[str] = None
     
@@ -88,9 +88,8 @@ class Settings(BaseSettings):
     def _validate_required_fields(self):
         """Validate that all required fields are present"""
         required_fields = [
-            'JWT_SECRET', 'DATABASE_URL', 'REDIS_URL', 
+            'JWT_SECRET', 'DATABASE_URL', 'REDIS_URL',
             'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
-            'ZERODHA_API_KEY', 'ZERODHA_API_SECRET',
             'FERNET_KEY'
         ]
         
