@@ -4,6 +4,9 @@
 
 set -e  # Exit on any error
 
+# Always run from the repo root so relative paths (.env, compose files) resolve
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 echo "🚀 Starting Stock AI Production Deployment..."
 
 # Colors for output

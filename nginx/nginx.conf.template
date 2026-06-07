@@ -5,15 +5,15 @@ events {
 http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
-    
+
     # Logging
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                     '$status $body_bytes_sent "$http_referer" '
                     '"$http_user_agent" "$http_x_forwarded_for"';
-    
+
     access_log /var/log/nginx/access.log main;
     error_log /var/log/nginx/error.log warn;
-    
+
     # Basic settings
     sendfile on;
     tcp_nopush on;
@@ -21,18 +21,18 @@ http {
     keepalive_timeout 65;
     types_hash_max_size 2048;
     client_max_body_size 20M;
-    
+
     # Rate limiting
     limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
     limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
     limit_req_zone $binary_remote_addr zone=search:10m rate=3r/s;
-    
+
     # Connection limiting
     limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;
-    
+
     # Hide nginx version
     server_tokens off;
-    
+
     # Gzip compression
     gzip on;
     gzip_vary on;
@@ -53,13 +53,13 @@ http {
     # HTTP to HTTPS redirect
     server {
         listen 80;
-        server_name stock-satta.online www.stock-satta.online;
-        
+        server_name ${DOMAIN};
+
         # Let's Encrypt challenge
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
         }
-        
+
         # Redirect all other traffic to HTTPS
         location / {
             return 301 https://$server_name$request_uri;
@@ -70,12 +70,12 @@ http {
     server {
         listen 443 ssl;
         http2 on;
-        server_name stock-satta.online www.stock-satta.online;
+        server_name ${DOMAIN};
 
         # SSL configuration
-        ssl_certificate /etc/letsencrypt/live/stock-satta.online/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/stock-satta.online/privkey.pem;
-        
+        ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
         # SSL settings
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384;
@@ -83,7 +83,7 @@ http {
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 10m;
         ssl_session_tickets off;
-        
+
         # Security headers
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-XSS-Protection "1; mode=block" always;
@@ -96,26 +96,27 @@ http {
         location ~* \.\./ {
             return 403;
         }
-        
+
         # Block common attack patterns
         location ~* (\.\.|\.\.\\|%2e%2e%2f|%2e%2e%5c) {
             return 403;
         }
-        
+
         # Block specific attack patterns
         location ~* (\.\./|\.\.\\|%2e%2e%2f|%2e%2e%5c) {
             return 403;
         }
-        
+
         # Block direct access to sensitive files
         location ~* ^/(etc|var|proc|sys|root|home|bin|sbin|usr|tmp|dev)/ {
             return 403;
         }
-        
+
         # Block common sensitive file patterns
         location ~* \.(passwd|shadow|htaccess|htpasswd|ini|conf|config|env|key|pem|crt|log)$ {
             return 403;
         }
+
         # Frontend (React SPA) - catch-all for non-API requests
         location / {
             proxy_pass http://frontend:80;
@@ -129,58 +130,52 @@ http {
 
         # Auth endpoints - strict rate limiting (MOST SPECIFIC FIRST)
         location /api/v1/auth/ {
-            # Strict rate limiting for auth
             limit_req zone=auth burst=10 nodelay;
             limit_conn conn_limit_per_ip 5;
-            
+
             proxy_pass http://backend:8000/api/v1/auth/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # Timeouts
+
             proxy_connect_timeout 30s;
             proxy_send_timeout 30s;
             proxy_read_timeout 30s;
         }
-        
+
         # Search endpoints - stricter rate limiting
         location /api/v1/search/ {
-            # Stricter rate limiting for search
             limit_req zone=search burst=5 nodelay;
             limit_conn conn_limit_per_ip 5;
-            
+
             proxy_pass http://backend:8000/api/v1/search/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # Timeouts
+
             proxy_connect_timeout 30s;
             proxy_send_timeout 30s;
             proxy_read_timeout 30s;
         }
-        
+
         # Backend API - general (LEAST SPECIFIC LAST)
         location /api/v1/ {
-            # Rate limiting
             limit_req zone=api burst=20 nodelay;
             limit_conn conn_limit_per_ip 10;
-            
+
             proxy_pass http://backend:8000/api/v1/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
+
             # WebSocket support
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-            
-            # Timeouts
+
             proxy_connect_timeout 30s;
             proxy_send_timeout 30s;
             proxy_read_timeout 86400;  # Keep WebSocket timeout for API
@@ -210,4 +205,4 @@ http {
             access_log off;
         }
     }
-} 
+}

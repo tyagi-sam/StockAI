@@ -3,6 +3,9 @@
 # Install Backend Dependencies Script
 # This script installs the required Python packages for local testing
 
+# Always run from the repo root so relative paths (backend/requirements.txt) resolve
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 echo "🔧 Installing StockAI Backend Dependencies..."
 
 # Check if we're in a virtual environment

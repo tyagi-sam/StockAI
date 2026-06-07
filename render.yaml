@@ -1,0 +1,99 @@
+# Render Blueprint for Stock AI
+# Apply via: Render dashboard -> New -> Blueprint -> connect this repo.
+#
+# NOTE: Render has no nginx here. Frontend and backend each get their own
+# https://<name>.onrender.com URL and Render terminates TLS for you, so the
+# nginx service from docker-compose.prod.yml is intentionally dropped.
+#
+# The two service names below are baked into the cross-references (CORS,
+# VITE_API_URL). If Render appends a suffix because a name is taken globally,
+# update VITE_API_URL / BACKEND_CORS_ORIGINS / FRONTEND_URL to the real URLs
+# in the dashboard and redeploy. See DEPLOY.md "Render" section.
+
+databases:
+  - name: stockai-db
+    databaseName: stock_ai
+    user: stock_ai_user
+    plan: free          # ⚠️ free Postgres is deleted after ~30 days — see DEPLOY.md
+
+services:
+  # Redis (Render "Key Value") — broker/cache
+  - type: keyvalue
+    name: stockai-redis
+    plan: free
+    ipAllowList: []     # empty = reachable only from your Render services
+    maxmemoryPolicy: noeviction
+
+  # Backend API (FastAPI, from backend/Dockerfile)
+  - type: web
+    name: stockai-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"                       # app/startup.sh binds uvicorn to 8000
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockai-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: stockai-redis
+          property: connectionString
+      - key: FRONTEND_URL
+        value: https://stockai-frontend.onrender.com
+      - key: BACKEND_CORS_ORIGINS
+        value: https://stockai-frontend.onrender.com
+      # ---- secrets: Render prompts for these on apply (paste from EC2 .env) ----
+      - key: JWT_SECRET            # must be >= 32 chars
+        sync: false
+      - key: FERNET_KEY            # must be >= 44 chars (base64 32-byte key)
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: ZERODHA_API_KEY
+        sync: false
+      - key: ZERODHA_API_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_TLS
+        sync: false
+      - key: SMTP_SSL
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: FROM_NAME
+        sync: false
+
+  # Frontend (React/Vite static build)
+  - type: web
+    name: stockai-frontend
+    runtime: static
+    rootDir: frontend-react
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      # Baked into the build — points at the backend service above.
+      - key: VITE_API_URL
+        value: https://stockai-backend.onrender.com/api/v1
+    routes:
+      - type: rewrite      # SPA: send all paths to index.html for react-router
+        source: /*
+        destination: /index.html

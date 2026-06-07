@@ -71,7 +71,13 @@ class Settings(BaseSettings):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
+
+        # Some providers (Render, Heroku) hand out DATABASE_URL with a bare
+        # "postgres://" scheme. SQLAlchemy 2.x + our asyncpg rewrite expect
+        # "postgresql://", so normalize it here once at the source.
+        if self.DATABASE_URL and self.DATABASE_URL.startswith("postgres://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
         # Handle CORS origins as comma-separated string
         if isinstance(self.BACKEND_CORS_ORIGINS, str):
             self.BACKEND_CORS_ORIGINS = [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",")]

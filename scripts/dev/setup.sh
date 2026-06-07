@@ -1,6 +1,10 @@
 #!/bin/bash
 
 # Stock AI Setup Script
+
+# Always run from the repo root so relative paths resolve
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 echo "🚀 Setting up Stock AI application..."
 
 # Check if .env file exists
