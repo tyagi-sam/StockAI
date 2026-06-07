@@ -47,9 +47,9 @@ services:
           name: stockai-redis
           property: connectionString
       - key: FRONTEND_URL
-        value: https://stockai-frontend.onrender.com
+        value: https://stockai-frontend-ohs3.onrender.com
       - key: BACKEND_CORS_ORIGINS
-        value: https://stockai-frontend.onrender.com
+        value: https://stockai-frontend-ohs3.onrender.com
       # ---- secrets: Render prompts for these on apply (paste from EC2 .env) ----
       - key: JWT_SECRET            # must be >= 32 chars
         sync: false
