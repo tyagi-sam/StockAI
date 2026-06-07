@@ -113,15 +113,42 @@ and the **frontend** (static Vite build). No nginx, no SSL setup, no domain to b
    `ZERODHA_API_KEY/SECRET`, and (optional but needed for email login) the `SMTP_*`, `FROM_*`, `OPENAI_API_KEY`.
    `DATABASE_URL` and `REDIS_URL` are wired automatically — leave them.
 5. **Apply.** First build takes ~5–10 min (backend installs pandas/numpy). Watch the logs.
-6. Your URLs: frontend **https://stockai-frontend.onrender.com**, backend **https://stockai-backend.onrender.com**.
+6. Your URLs are shown at the top of each service's page. **They likely have a random
+   suffix** — see the gotcha below. (Our actual deploy landed on
+   `https://stockai-frontend-ohs3.onrender.com` and `https://stockai-backend-f777.onrender.com`.)
 
-### Two things to verify after first deploy
-- **Service-name collision:** if Render appended a suffix (e.g. `stockai-backend-a1b2`),
-  the baked-in `VITE_API_URL` / `BACKEND_CORS_ORIGINS` are now wrong. Fix them in each
-  service's **Environment** tab to the real URLs and redeploy. (Rename the services to
-  something unique up front to avoid this.)
-- **OAuth / Zerodha callbacks:** add the new frontend URL to your Google OAuth authorized
-  origins/redirects and Zerodha redirect URL, or those logins fail.
+### ⚠️ Gotcha #1 — Render appends a random suffix to taken service names
+`<name>.onrender.com` is **globally unique**. If `stockai-backend` is already taken by
+anyone on Render, your service silently becomes `stockai-backend-f777.onrender.com`
+(some random suffix). This is the #1 thing that breaks the deploy, because:
+- The frontend bakes `VITE_API_URL` at **build time** — if it points at the un-suffixed
+  guess, the live site calls a backend host that doesn't exist (failed/404 API calls).
+- `BACKEND_CORS_ORIGINS` pointing at the wrong frontend host → the browser blocks every
+  API call with a CORS error.
+
+**Fix (what we did):**
+1. Read the **real** URLs off each service's page in the dashboard.
+2. Set them in `render.yaml`: `VITE_API_URL` = real backend URL + `/api/v1`,
+   `BACKEND_CORS_ORIGINS` and `FRONTEND_URL` = real frontend URL.
+3. Push and re-sync. Because `VITE_API_URL` is build-time, force a frontend rebuild:
+   **stockai-frontend → Manual Deploy → Clear build cache & deploy.**
+> The `name:` in `render.yaml` stays as-is — it matches the service. Only the *cross-
+> reference URL values* need the real suffixed hostnames. (You can also just edit these
+> in each service's **Environment** tab for a faster turnaround than a full git sync.)
+
+### ⚠️ Gotcha #2 — `TrustedHostMiddleware` 400s the health check
+`backend/app/main.py` runs `TrustedHostMiddleware` with an allow-list. If it doesn't
+include the Render host, **every** request (including Render's `/health` probe) returns
+`400 Bad Request`, the deploy never goes healthy, and it eventually times out — even
+though the app booted fine (you'll see `Migrations completed` + uvicorn started in logs).
+**Fix:** the allow-list now includes `*.onrender.com` and reads an optional
+`ALLOWED_HOSTS` env var (comma-separated, supports `*`). Add your custom domain there
+later if you move off `*.onrender.com`.
+
+### Also verify
+- **Google OAuth:** add the real frontend URL to your OAuth client's authorized
+  JavaScript origins + redirect URIs, or "Sign in with Google" fails with
+  `redirect_uri_mismatch` (the error page shows the exact URI to whitelist).
 
 ### Two known free-tier caveats (matter for a portfolio link)
 - **Free Postgres is deleted after ~30 days.** For a link that must survive, create a free
