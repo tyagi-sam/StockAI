@@ -26,7 +26,7 @@ services:
 
   # Backend API (FastAPI, from backend/Dockerfile)
   - type: web
-    name: stockai-backend
+    name: stockai-tyagi-backend
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
@@ -47,9 +47,9 @@ services:
           name: stockai-redis
           property: connectionString
       - key: FRONTEND_URL
-        value: https://stockai-frontend.onrender.com
+        value: https://stockai-tyagi-frontend.onrender.com
       - key: BACKEND_CORS_ORIGINS
-        value: https://stockai-frontend.onrender.com
+        value: https://stockai-tyagi-frontend.onrender.com
       # ---- secrets: Render prompts for these on apply (paste from EC2 .env) ----
       - key: JWT_SECRET            # must be >= 32 chars
         sync: false
@@ -84,7 +84,7 @@ services:
 
   # Frontend (React/Vite static build)
   - type: web
-    name: stockai-frontend
+    name: stockai-tyagi-frontend
     runtime: static
     rootDir: frontend-react
     buildCommand: npm install && npm run build
@@ -92,7 +92,7 @@ services:
     envVars:
       # Baked into the build — points at the backend service above.
       - key: VITE_API_URL
-        value: https://stockai-backend.onrender.com/api/v1
+        value: https://stockai-tyagi-backend.onrender.com/api/v1
     routes:
       - type: rewrite      # SPA: send all paths to index.html for react-router
         source: /*
