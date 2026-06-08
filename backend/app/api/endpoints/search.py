@@ -1,4 +1,5 @@
 import logging
+import time
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -164,20 +165,27 @@ def get_stock_data_yfinance(symbol: str, days: int = 90) -> Optional[List[Dict]]
             symbol,          # Original symbol (for international stocks)
         ]
         
+        last_failure = None
         for variant in symbol_variants:
-            try:
-                logger.debug(f"Trying yfinance with symbol: {variant}")
-                ticker = yf.Ticker(variant)
-                hist = ticker.history(period=f"{days}d")
-                
-                if not hist.empty:
+            for attempt in range(1, 4):  # retry: Yahoo rate-limits datacenter IPs
+                try:
+                    logger.info(f"Trying yfinance for {variant} (attempt {attempt}/3)")
+                    ticker = yf.Ticker(variant)
+                    hist = ticker.history(period=f"{days}d")
+
+                    if hist.empty:
+                        last_failure = f"{variant}: empty data (Yahoo likely rate-limited this IP)"
+                        logger.warning(f"yfinance returned EMPTY history for {variant} (attempt {attempt}/3)")
+                        time.sleep(2 * attempt)  # back off, then retry
+                        continue
+
                     # Get exchange info
                     info = ticker.info
                     exchange = info.get('exchange', 'Unknown')
                     currency = info.get('currency', 'USD')
-                    
+
                     logger.info(f"Successfully retrieved data for {variant} from {exchange} in {currency}")
-                    
+
                     data = []
                     for date, row in hist.iterrows():
                         data.append({
@@ -191,14 +199,16 @@ def get_stock_data_yfinance(symbol: str, days: int = 90) -> Optional[List[Dict]]
                             "currency": currency,
                             "last_updated": convert_utc_to_ist(date)
                         })
-                    
+
                     logger.info(f"Retrieved {len(data)} data points for {variant}")
                     return data
-            except Exception as e:
-                logger.debug(f"Failed with symbol {variant}: {str(e)}")
-                continue
-        
-        logger.error(f"All symbol variants failed for {symbol}")
+                except Exception as e:
+                    last_failure = f"{variant}: {type(e).__name__}: {e}"
+                    logger.warning(f"yfinance error for {variant} (attempt {attempt}/3): {type(e).__name__}: {e}")
+                    time.sleep(2 * attempt)
+                    continue
+
+        logger.error(f"All symbol variants failed for {symbol}. Last failure: {last_failure}")
         return None
         
     except Exception as e:
@@ -594,15 +604,15 @@ async def analyze_stock(
                 search_limit_info=search_status
             )
         
-        # Check search limit before proceeding with new analysis
-        can_search, message, remaining = await SearchLimitService.check_and_increment_search_count(current_user, db)
-        
-        if not can_search:
+        # Check the daily limit WITHOUT counting yet — a search is only counted
+        # once we've actually fetched data and produced a result (see below).
+        pre_status = await SearchLimitService.get_user_search_status(current_user, db)
+        if not pre_status.get("can_search", False):
             logger.warning(f"User {current_user.email} exceeded daily search limit")
             return AnalysisResponse(
                 success=False,
-                error=message,
-                search_limit_info=await SearchLimitService.get_user_search_status(current_user, db)
+                error=f"You have reached your daily limit of {SearchLimitService.DAILY_LIMIT} stock searches. Please try again tomorrow.",
+                search_limit_info=pre_status
             )
         
         # Get technical analysis
@@ -630,7 +640,10 @@ async def analyze_stock(
         
         # Store the full analysis in cache
         stock_cache_service.store_stock_analysis(current_user.id, stock_request.symbol, full_response_data)
-        
+
+        # Data fetch + analysis succeeded — NOW count this search against the daily limit.
+        can_search, message, remaining = await SearchLimitService.check_and_increment_search_count(current_user, db)
+
         # Filter the response to return only the requested analysis type
         response_data = filter_analysis_by_type(full_response_data, stock_request.analysis_type)
         
