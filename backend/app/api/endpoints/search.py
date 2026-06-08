@@ -154,6 +154,48 @@ except Exception as e:
     logger.warning(f"Failed to initialize OpenAI client: {e}")
     client = None
 
+# Remembers which lookup (NSE / BSE / plain) worked for each symbol, so repeat
+# searches skip the probing and hit the right market in a single API call.
+# Process-wide; harmless to lose on restart (it just re-probes once).
+_TWELVE_DATA_SYMBOL_CACHE: Dict[str, dict] = {}
+
+def _twelvedata_fetch(params: dict, days: int, api_key: str) -> Optional[List[Dict]]:
+    """One Twelve Data time_series call. Returns OHLCV (oldest->newest) or None."""
+    query = {**params, "interval": "1day", "outputsize": days, "apikey": api_key}
+    resp = requests.get("https://api.twelvedata.com/time_series", params=query, timeout=10)
+    payload = resp.json()
+
+    if payload.get("status") != "ok" or not payload.get("values"):
+        logger.warning(f"Twelve Data: no data for {params} — {payload.get('message', payload.get('status'))}")
+        return None
+
+    meta = payload.get("meta", {})
+    exchange = meta.get("exchange", "Unknown")
+    currency = meta.get("currency", "USD")
+
+    data = []
+    # Twelve Data returns newest-first; reverse to oldest->newest so that
+    # close_prices[-1] is the latest price (matches the yfinance path).
+    for v in reversed(payload["values"]):
+        try:
+            dt = datetime.strptime(v["datetime"][:10], "%Y-%m-%d")
+        except Exception:
+            dt = datetime.utcnow()
+        data.append({
+            "date": v["datetime"][:10],
+            "open": float(v["open"]),
+            "high": float(v["high"]),
+            "low": float(v["low"]),
+            "close": float(v["close"]),
+            "volume": int(float(v.get("volume") or 0)),
+            "exchange": exchange,
+            "currency": currency,
+            "last_updated": convert_utc_to_ist(dt),
+        })
+
+    logger.info(f"Twelve Data: retrieved {len(data)} points for {query['symbol']} ({exchange})")
+    return data
+
 def get_stock_data_twelvedata(symbol: str, days: int = 90) -> Optional[List[Dict]]:
     """Fetch daily OHLCV from Twelve Data.
 
@@ -166,50 +208,28 @@ def get_stock_data_twelvedata(symbol: str, days: int = 90) -> Optional[List[Dict
     if not api_key:
         return None
 
-    # Match the app's Indian-market priority: NSE, then BSE, then plain (US/intl).
-    attempts = [
-        {"symbol": symbol, "exchange": "NSE"},
-        {"symbol": symbol, "exchange": "BSE"},
-        {"symbol": symbol},
-    ]
-    for params in attempts:
+    key = symbol.upper()
+
+    # Fast path: reuse the market that worked for this symbol last time (1 call).
+    cached = _TWELVE_DATA_SYMBOL_CACHE.get(key)
+    if cached:
         try:
-            query = {**params, "interval": "1day", "outputsize": days, "apikey": api_key}
-            resp = requests.get("https://api.twelvedata.com/time_series", params=query, timeout=15)
-            payload = resp.json()
+            data = _twelvedata_fetch(cached, days, api_key)
+            if data:
+                return data
+        except Exception as e:
+            logger.warning(f"Twelve Data cached lookup failed for {key}: {type(e).__name__}: {e}")
 
-            if payload.get("status") != "ok" or not payload.get("values"):
-                logger.warning(
-                    f"Twelve Data: no data for {params} — {payload.get('message', payload.get('status'))}"
-                )
-                continue
-
-            meta = payload.get("meta", {})
-            exchange = meta.get("exchange", "Unknown")
-            currency = meta.get("currency", "USD")
-
-            data = []
-            # Twelve Data returns newest-first; reverse to oldest->newest so that
-            # close_prices[-1] is the latest price (matches the yfinance path).
-            for v in reversed(payload["values"]):
-                try:
-                    dt = datetime.strptime(v["datetime"][:10], "%Y-%m-%d")
-                except Exception:
-                    dt = datetime.utcnow()
-                data.append({
-                    "date": v["datetime"][:10],
-                    "open": float(v["open"]),
-                    "high": float(v["high"]),
-                    "low": float(v["low"]),
-                    "close": float(v["close"]),
-                    "volume": int(float(v.get("volume") or 0)),
-                    "exchange": exchange,
-                    "currency": currency,
-                    "last_updated": convert_utc_to_ist(dt),
-                })
-
-            logger.info(f"Twelve Data: retrieved {len(data)} points for {query['symbol']} ({exchange})")
-            return data
+    # First time (or cache stale): probe Indian markets first (app priority),
+    # then plain (US/international). Remember the winner for next time.
+    for params in ({"symbol": symbol, "exchange": "NSE"},
+                   {"symbol": symbol, "exchange": "BSE"},
+                   {"symbol": symbol}):
+        try:
+            data = _twelvedata_fetch(params, days, api_key)
+            if data:
+                _TWELVE_DATA_SYMBOL_CACHE[key] = params
+                return data
         except Exception as e:
             logger.warning(f"Twelve Data error for {params}: {type(e).__name__}: {e}")
             continue
