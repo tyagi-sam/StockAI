@@ -19,7 +19,7 @@
 
 ## ✨ Features
 
-- 🔎 **Stock analysis** — search any ticker and get price action, technical indicators, and momentum signals (data via Yahoo Finance, no paid API key required).
+- 🔎 **Stock analysis** — search any ticker (US + Indian NSE/BSE) and get price action, technical indicators, and momentum signals. Market data via Twelve Data, with a Yahoo Finance fallback.
 - 🤖 **AI insights** — an OpenAI-generated, plain-English summary of each stock's outlook.
 - 🔐 **Secure auth** — email + password with email-OTP verification **and** Google OAuth (Sign in with Google), JWT access/refresh tokens.
 - ⏱️ **Daily search limits** — per-user quotas tracked in the database, enforced with API rate limiting.
@@ -48,7 +48,7 @@
                                  └────────────────┘  └────────────┘
                                           │
                                           ▼
-                              Yahoo Finance · OpenAI
+                            Twelve Data / yfinance · OpenAI
 ```
 
 ## 🧰 Tech stack
@@ -57,7 +57,7 @@
 |-------|------|
 | **Frontend** | React 19, TypeScript, Vite, Tailwind CSS, React Router, Axios |
 | **Backend** | FastAPI, Python 3.11, async SQLAlchemy, Alembic, Pydantic |
-| **Data / AI** | Yahoo Finance (`yfinance`), OpenAI |
+| **Data / AI** | Twelve Data API (+ `yfinance` fallback), OpenAI |
 | **Storage** | PostgreSQL 15, Redis 7 |
 | **Infra** | Docker / Docker Compose, nginx, Let's Encrypt |
 | **Deploy** | Render (free) · Oracle Cloud / EC2 (Docker Compose) |
@@ -128,5 +128,5 @@ This repo ships two paths, both documented in **[`DEPLOY.md`](DEPLOY.md)**:
 
 ## 📌 Notes
 
-- Stock data comes from **Yahoo Finance** (no paid key). A Zerodha integration exists in the codebase but is inactive, kept for a possible future feature.
+- Stock data comes from the **Twelve Data API** (free tier), with **Yahoo Finance (`yfinance`)** as a fallback — Yahoo rate-limits cloud/datacenter IPs, so a keyed API is used in production. A Zerodha integration exists in the codebase but is inactive, kept for a possible future feature.
 - This is a personal/portfolio project for low-traffic use; the live demo runs on free-tier infrastructure that sleeps when idle.

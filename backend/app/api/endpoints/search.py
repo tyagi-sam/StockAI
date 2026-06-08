@@ -1,5 +1,6 @@
 import logging
 import time
+import requests
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -153,6 +154,68 @@ except Exception as e:
     logger.warning(f"Failed to initialize OpenAI client: {e}")
     client = None
 
+def get_stock_data_twelvedata(symbol: str, days: int = 90) -> Optional[List[Dict]]:
+    """Fetch daily OHLCV from Twelve Data.
+
+    Unlike Yahoo/yfinance, Twelve Data serves datacenter IPs (Render/cloud), so
+    this is the primary source in production. Returns None if no API key is set
+    (local dev falls back to yfinance) or all lookups fail.
+    Free tier: ~800 req/day, 8 req/min.
+    """
+    api_key = settings.TWELVE_DATA_API_KEY
+    if not api_key:
+        return None
+
+    # Match the app's Indian-market priority: NSE, then BSE, then plain (US/intl).
+    attempts = [
+        {"symbol": symbol, "exchange": "NSE"},
+        {"symbol": symbol, "exchange": "BSE"},
+        {"symbol": symbol},
+    ]
+    for params in attempts:
+        try:
+            query = {**params, "interval": "1day", "outputsize": days, "apikey": api_key}
+            resp = requests.get("https://api.twelvedata.com/time_series", params=query, timeout=15)
+            payload = resp.json()
+
+            if payload.get("status") != "ok" or not payload.get("values"):
+                logger.warning(
+                    f"Twelve Data: no data for {params} — {payload.get('message', payload.get('status'))}"
+                )
+                continue
+
+            meta = payload.get("meta", {})
+            exchange = meta.get("exchange", "Unknown")
+            currency = meta.get("currency", "USD")
+
+            data = []
+            # Twelve Data returns newest-first; reverse to oldest->newest so that
+            # close_prices[-1] is the latest price (matches the yfinance path).
+            for v in reversed(payload["values"]):
+                try:
+                    dt = datetime.strptime(v["datetime"][:10], "%Y-%m-%d")
+                except Exception:
+                    dt = datetime.utcnow()
+                data.append({
+                    "date": v["datetime"][:10],
+                    "open": float(v["open"]),
+                    "high": float(v["high"]),
+                    "low": float(v["low"]),
+                    "close": float(v["close"]),
+                    "volume": int(float(v.get("volume") or 0)),
+                    "exchange": exchange,
+                    "currency": currency,
+                    "last_updated": convert_utc_to_ist(dt),
+                })
+
+            logger.info(f"Twelve Data: retrieved {len(data)} points for {query['symbol']} ({exchange})")
+            return data
+        except Exception as e:
+            logger.warning(f"Twelve Data error for {params}: {type(e).__name__}: {e}")
+            continue
+
+    return None
+
 def get_stock_data_yfinance(symbol: str, days: int = 90) -> Optional[List[Dict]]:
     """Get stock data using yfinance with priority for Indian markets"""
     try:
@@ -285,8 +348,12 @@ def get_technical_analysis(symbol: str, user: User) -> TechnicalData:
     try:
         logger.info(f"Getting technical analysis for symbol: {symbol}")
         
-        # Use yfinance as primary source (no authentication required)
-        stock_data = get_stock_data_yfinance(symbol, days=90)
+        # Prefer Twelve Data (reliable from datacenter IPs); fall back to yfinance
+        # (used in local dev where no API key is set, or if Twelve Data is down).
+        stock_data = get_stock_data_twelvedata(symbol, days=90)
+        if not stock_data:
+            logger.info(f"Twelve Data returned nothing for {symbol}; trying yfinance")
+            stock_data = get_stock_data_yfinance(symbol, days=90)
         if not stock_data:
             raise ValueError(f"Could not fetch stock data for {symbol}")
         

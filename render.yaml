@@ -59,6 +59,8 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: TWELVE_DATA_API_KEY    # market data (Yahoo blocks Render IPs)
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: SMTP_HOST

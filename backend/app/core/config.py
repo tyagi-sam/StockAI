@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     ZERODHA_API_KEY: Optional[str] = None
     ZERODHA_API_SECRET: Optional[str] = None
 
+    # Market data — Twelve Data (works from datacenter IPs, unlike Yahoo/yfinance)
+    TWELVE_DATA_API_KEY: Optional[str] = None
+
     # AI Analysis
     OPENAI_API_KEY: Optional[str] = None
     
